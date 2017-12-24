@@ -35,8 +35,6 @@ export class Register {
     this.ppu_v = 0;
     this.ppu_x = 0;
     this.ppu_w = 0;
-    this.frame_period = 0;
-    this.frame_irq = 0xFF;
   }
 
   set_vblank() {
@@ -139,7 +137,7 @@ export class Register {
       return ret;
 
     case 0x4015:
-      return this.apu.read(addr) | (this.frame_irq? 0x40:0);
+      return this.apu.read(addr);
 
     case 0x4016: // SPECIO1  (RW)
       var ret = 0;
@@ -255,11 +253,6 @@ export class Register {
       this.joypad0.strobe = data & 1;
       if(this.joypad0.strobe)
         this.joypad0.index = 0;
-      break;
-
-    case 0x4017: // SPECIO2 (R)
-      this.frame_period = 4 + (data>>7)&1;
-      this.frame_irq = (data>>6)&1 == 0;
       break;
 
     default:
