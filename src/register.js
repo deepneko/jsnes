@@ -48,7 +48,7 @@ export class Register {
   }
 
   invoke_irq() {
-    if(this.frame_irq)
+    if(this.apu.frame_irq)
       this.cpu.set_intr(this.cpu.INTR.IRQ);
   }
 
@@ -135,9 +135,6 @@ export class Register {
 
       this.ppu_v += this.ppu_addr_inc ? 32:1;
       return ret;
-
-    case 0x4015:
-      return this.apu.read(addr);
 
     case 0x4016: // SPECIO1  (RW)
       var ret = 0;
