@@ -1,0 +1,29 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+  <head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta content="utf-8" http-equiv="encoding">
+    <title>jsnes</title>
+    <script type="module">
+      import { main, } from './main.js';
+      var r = document.querySelector('#rom');
+      var m = document.querySelector('#main');
+      m.onclick = function() {
+        main(r.value);
+      }
+    </script>
+  </head>
+
+  <body id="body">
+    <select id="rom" >
+      <option value="./rom/mario1.nes">mario1</option>
+      <option value="./rom/dq1.nes">dq1</option>
+      <option value="./rom/dq3.nes">dq3</option>
+      <option value="./rom/dq4.nes">dq4</option>
+      <option value="./rom/rockman.nes">rockman</option>
+      <option value="./rom/rockman2.nes">rockman2</option>
+    </select>
+    <input type="button" value="submit" id="main">
+    <canvas id="console" width="256" height="240"></canvas>
+  </body>
+</html>

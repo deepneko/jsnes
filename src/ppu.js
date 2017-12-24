@@ -1,0 +1,348 @@
+import * as util from './util.js'
+
+export class PPU {
+  constructor(nes) {
+    this.nes = nes;
+    this.rom = nes.rom;
+    this.mmc = nes.mmc;
+    this.debug = false;
+
+    this.oamram = new Uint8Array(0x100);
+    this.name_tables = new Uint8Array(0x1000);
+    this.name_table = new Array(4);
+    for(var i=0; i<4; i++)
+      this.name_table[i] = (new Uint8Array(0x400)).fill(0);
+    this.palette = new Uint8Array(0x20);
+    this.line_buf = new Uint8Array(0x100);
+    this.bg_rendered = new Array(0x100);
+    this.sprite_rendered = new Array(0x100);
+
+    this.MIRROR_TYPE = { HORIZONTAL:0, VERTICAL:1, FOUR_SCREEN:2, SINGLE_SCREEN0:3, SINGLE_SCREEN1:4 };
+
+    /* Chris Covell */
+    this.palette_data = [
+      [0x80,0x80,0x80], [0x00,0x3D,0xA6], [0x00,0x12,0xB0], [0x44,0x00,0x96], 
+      [0xA1,0x00,0x5E], [0xC7,0x00,0x28], [0xBA,0x06,0x00], [0x8C,0x17,0x00], 
+      [0x5C,0x2F,0x00], [0x10,0x45,0x00], [0x05,0x4A,0x00], [0x00,0x47,0x2E], 
+      [0x00,0x41,0x66], [0x00,0x00,0x00], [0x05,0x05,0x05], [0x05,0x05,0x05], 
+      [0xC7,0xC7,0xC7], [0x00,0x77,0xFF], [0x21,0x55,0xFF], [0x82,0x37,0xFA], 
+      [0xEB,0x2F,0xB5], [0xFF,0x29,0x50], [0xFF,0x22,0x00], [0xD6,0x32,0x00], 
+      [0xC4,0x62,0x00], [0x35,0x80,0x00], [0x05,0x8F,0x00], [0x00,0x8A,0x55], 
+      [0x00,0x99,0xCC], [0x21,0x21,0x21], [0x09,0x09,0x09], [0x09,0x09,0x09], 
+      [0xFF,0xFF,0xFF], [0x0F,0xD7,0xFF], [0x69,0xA2,0xFF], [0xD4,0x80,0xFF], 
+      [0xFF,0x45,0xF3], [0xFF,0x61,0x8B], [0xFF,0x88,0x33], [0xFF,0x9C,0x12], 
+      [0xFA,0xBC,0x20], [0x9F,0xE3,0x0E], [0x2B,0xF0,0x35], [0x0C,0xF0,0xA4], 
+      [0x05,0xFB,0xFF], [0x5E,0x5E,0x5E], [0x0D,0x0D,0x0D], [0x0D,0x0D,0x0D], 
+      [0xFF,0xFF,0xFF], [0xA6,0xFC,0xFF], [0xB3,0xEC,0xFF], [0xDA,0xAB,0xEB], 
+      [0xFF,0xA8,0xF9], [0xFF,0xAB,0xB3], [0xFF,0xD2,0xB0], [0xFF,0xEF,0xA6], 
+      [0xFF,0xF7,0x9C], [0xD7,0xE8,0x95], [0xA6,0xED,0xAF], [0xA2,0xF2,0xDA], 
+      [0x99,0xFF,0xFC], [0xDD,0xDD,0xDD], [0x11,0x11,0x11], [0x11,0x11,0x11], 
+    ];
+
+    /* AspiringSquire */
+    /*
+    this.palette_data = [
+      [0x6c,0x6c,0x6c], [0x00,0x26,0x8e], [0x00,0x00,0xa8], [0x40,0x00,0x94],
+      [0x70,0x00,0x70], [0x78,0x00,0x40], [0x70,0x00,0x00], [0x62,0x16,0x00],
+      [0xba,0xba,0xba], [0x20,0x5c,0xdc], [0x38,0x38,0xff], [0x80,0x20,0xf0],
+      [0xc0,0x00,0xc0], [0xd0,0x14,0x74], [0xd0,0x20,0x20], [0xac,0x40,0x14],
+      [0x44,0x24,0x00], [0x34,0x34,0x00], [0x00,0x50,0x00], [0x00,0x44,0x44],
+      [0x00,0x40,0x60], [0x00,0x00,0x00], [0x10,0x10,0x10], [0x10,0x10,0x10],
+      [0x7c,0x54,0x00], [0x58,0x64,0x00], [0x00,0x88,0x00], [0x00,0x74,0x68],
+      [0x00,0x74,0x9c], [0x20,0x20,0x20], [0x10,0x10,0x10], [0x10,0x10,0x10],
+      [0xff,0xff,0xff], [0x4c,0xa0,0xff], [0x88,0x88,0xff], [0xc0,0x6c,0xff],
+      [0xff,0x50,0xff], [0xff,0x64,0xb8], [0xff,0x78,0x78], [0xff,0x96,0x38],
+      [0xff,0xff,0xff], [0xb0,0xd4,0xff], [0xc4,0xc4,0xff], [0xe8,0xb8,0xff],
+      [0xff,0xb0,0xff], [0xff,0xb8,0xe8], [0xff,0xc4,0xc4], [0xff,0xd4,0xa8],
+      [0xdb,0xab,0x00], [0xa2,0xca,0x20], [0x4a,0xdc,0x4a], [0x2c,0xcc,0xa4],
+      [0x1c,0xc2,0xea], [0x58,0x58,0x58], [0x10,0x10,0x10], [0x10,0x10,0x10],
+      [0xff,0xe8,0x90], [0xf0,0xf4,0xa4], [0xc0,0xff,0xc0], [0xac,0xf4,0xf0],
+      [0xa0,0xe8,0xff], [0xc2,0xc2,0xc2], [0x20,0x20,0x20], [0x10,0x10,0x10] 
+    ];
+    */
+
+    /* Loopy */
+    /*
+    this.palette_data = [
+      [0x75,0x75,0x75], [0x27,0x1B,0x8F], [0x00,0x00,0xAB], [0x47,0x00,0x9F],
+      [0x8F,0x00,0x77], [0xAB,0x00,0x13], [0xA7,0x00,0x00], [0x7F,0x0B,0x00],
+      [0x43,0x2F,0x00], [0x00,0x47,0x00], [0x00,0x51,0x00], [0x00,0x3F,0x17],
+      [0x1B,0x3F,0x5F], [0x00,0x00,0x00], [0x05,0x05,0x05], [0x05,0x05,0x05],
+      [0xBC,0xBC,0xBC], [0x00,0x73,0xEF], [0x23,0x3B,0xEF], [0x83,0x00,0xF3],
+      [0xBF,0x00,0xBF], [0xE7,0x00,0x5B], [0xDB,0x2B,0x00], [0xCB,0x4F,0x0F],
+      [0x8B,0x73,0x00], [0x00,0x97,0x00], [0x00,0xAB,0x00], [0x00,0x93,0x3B],
+      [0x00,0x83,0x8B], [0x11,0x11,0x11], [0x09,0x09,0x09], [0x09,0x09,0x09],
+      [0xFF,0xFF,0xFF], [0x3F,0xBF,0xFF], [0x5F,0x97,0xFF], [0xA7,0x8B,0xFD],
+      [0xF7,0x7B,0xFF], [0xFF,0x77,0xB7], [0xFF,0x77,0x63], [0xFF,0x9B,0x3B],
+      [0xF3,0xBF,0x3F], [0x83,0xD3,0x13], [0x4F,0xDF,0x4B], [0x58,0xF8,0x98],
+      [0x00,0xEB,0xDB], [0x66,0x66,0x66], [0x0D,0x0D,0x0D], [0x0D,0x0D,0x0D],
+      [0xFF,0xFF,0xFF], [0xAB,0xE7,0xFF], [0xC7,0xD7,0xFF], [0xD7,0xCB,0xFF],
+      [0xFF,0xC7,0xFF], [0xFF,0xC7,0xDB], [0xFF,0xBF,0xB3], [0xFF,0xDB,0xAB],
+      [0xFF,0xE7,0xA3], [0xE3,0xFF,0xA3], [0xAB,0xF3,0xBF], [0xB3,0xFF,0xCF],
+      [0x9F,0xFF,0xF3], [0xDD,0xDD,0xDD], [0x11,0x11,0x11], [0x11,0x11,0x11],
+    ];
+    */
+
+    for(var i=0; i<0x40; i++) {
+      this.palette_data[i].push(0xFF);
+    }
+
+    console.log("constructor PPU", this);
+  }
+
+  reset() {
+    this.oamram.fill(0);
+    this.palette.fill(0);
+
+    if(this.rom.four_screen)
+      this.change_mirroring(this.MIRROR_TYPE.FOUR_SCREEN);
+    else if(this.rom.mirroring == this.MIRROR_TYPE.HORIZONTAL)
+      this.change_mirroring(this.MIRROR_TYPE.HORIZONTAL);
+    else if(this.rom.mirroring == this.MIRROR_TYPE.VERTICAL)
+      this.change_mirroring(this.MIRROR_TYPE.VERTICAL);
+  }
+
+  change_mirroring(type) {
+    this.name_tables = [].concat.apply([], [this.name_table[0], this.name_table[1], this.name_table[2], this.name_table[3]]);
+
+    switch(type) {
+    case this.MIRROR_TYPE.HORIZONTAL:
+      this.name_table[0] = this.name_tables.slice(0, 0x400);
+      this.name_table[1] = this.name_table[0];
+      this.name_table[2] = this.name_tables.slice(0x400, 0x800);
+      this.name_table[3] = this.name_table[2];
+      break;
+    case this.MIRROR_TYPE.VERTICAL:
+      this.name_table[0] = this.name_tables.slice(0, 0x400);
+      this.name_table[1] = this.name_tables.slice(0x400, 0x800);
+      this.name_table[2] = this.name_table[0];
+      this.name_table[3] = this.name_table[1];
+      break;
+    case this.MIRROR_TYPE.FOUR_SCREEN:
+      this.name_table[0] = this.name_tables.slice(0, 0x400);
+      this.name_table[1] = this.name_tables.slice(0x400, 0x800);
+      this.name_table[2] = this.name_tables.slice(0x800, 0xC00);
+      this.name_table[3] = this.name_tables.slice(0xC00, 0x1000);
+      break;
+    case this.MIRROR_TYPE.SINGLE_SCREEN0:
+      this.name_table[0] = this.name_tables.slice(0, 0x400);
+      this.name_table[1] = this.name_table[0];
+      this.name_table[2] = this.name_table[0];
+      this.name_table[3] = this.name_table[0];
+      break;
+    }
+  }
+
+  read(addr) {
+    return this.name_table[(addr>>10)&3][addr&0x3ff];
+  }
+
+  write(addr, data) {
+    //util.log(this.nes, "ppu write:" + util.to_hex(addr) + ":" + util.to_hex(data));
+    this.name_table[(addr>>10)&3][addr&0x3ff] = data;
+  }
+
+  rendering(line, screen) {
+    this.bg_rendered.fill(0);
+    this.sprite_rendered.fill(0);
+
+    for(var i=0; i<256; i++)
+      this.line_buf[i] = this.palette[0];
+
+    if(this.nes.reg.bg_visibility)
+      this.bg_rendering(line);
+
+    if(this.nes.reg.sprite_visibility)
+      this.sprite_rendering(line);
+
+    var pos = screen.width * line;
+    for(var i=0; i<256; i++) {
+      screen.pixels[pos+i] = this.palette_data[this.line_buf[i]];
+    }
+
+    if(this.debug) {
+      var str = "ppu line_buf " + util.to_hex(line) + ":";
+      for(var i=0; i<256; i++) {
+        if(i%0x20 == 0)
+          str += "\n";
+        str += util.to_hex(this.line_buf[i]) + ",";
+      }
+      util.log(this.nes, str);
+    }
+  }
+
+  bg_rendering(line) {
+    var fineY = (this.nes.reg.ppu_v >> 12) & 7;
+    var pattern_addr = this.nes.reg.bg_pattern ? 0x1000:0x0000;
+    var x = this.nes.reg.ppu_x & 7;
+    var inc = -x;
+
+    //var str = "tiles:";
+    for(var i=0; i<33; i++, inc+=8) {
+      var v = this.nes.reg.ppu_v;
+      var tile_addr = 0x2000 | (v&0xfff);
+      var tile = this.read(tile_addr);;
+
+      var attr_addr = 0x23c0 | (v&0xc00) | ((v>>4)&0x38) | ((v>>2)&0x07);
+      var shift = ((v>>4)&4) | (v&2);
+      var attr_byte = ((this.read(attr_addr)>>shift)&3)<<2;
+
+      var low_tile = this.mmc.read_chr(pattern_addr+(tile*16)+fineY);
+      var high_tile = this.mmc.read_chr(pattern_addr+(tile*16)+fineY+8);
+
+      //str += util.to_hex(low_tile) + "|" + util.to_hex(high_tile) + ",";
+      //for(var j=0; j<8; j++) {
+      for(var j=7; j>=0; j--) {
+        var pos = inc + j;
+        var tile_bit = ((low_tile&1) | (high_tile<<1)) & 3;
+
+        if(pos >= 0 && pos < 0x100) {
+          if(tile_bit) {
+            this.line_buf[pos] = this.palette[tile_bit|attr_byte];
+            this.bg_rendered[pos] = 1;
+          }
+        }
+
+        low_tile >>= 1;
+        high_tile >>= 1;
+      }
+
+      this.nes.reg.increment_x();
+    }
+    //util.log(this.nes, str);
+  }
+
+  sprite_rendering(line) {
+    var height = this.nes.reg.sprite_size? 16:8;
+    var pattern_addr = this.nes.reg.sprite_pattern? 0x1000:0x0000;
+
+    for(var i=0; i<64; i++) {
+      var y = this.oamram[(i*4)+0] + 1;
+      var tile_index = this.oamram[(i*4)+1];
+      var attr_byte = this.oamram[(i*4)+2];
+      var x = this.oamram[(i*4)+3];
+
+      var offset = line - y;
+      if(offset < 0 || offset >= height)
+        continue;
+
+      var v_flip = (attr_byte>>7) & 1;
+      if(v_flip)
+        offset = height - 1 - offset;
+
+      var h_flip = (attr_byte>>6) & 1;
+      var start, end, inc;
+      if(h_flip)
+        start = 0, end = 8, inc = 1;
+      else
+        start = 7, end = -1, inc = -1;
+
+      var bg_pri = (attr_byte>>5) & 1;
+      var upper_bit = (attr_byte&3) << 2;
+
+      var tile_addr = 0;
+      if(height == 16) {
+        var index = tile_index & ~1;
+        var bank = tile_index & 1;
+        if(offset > 7) {
+          index++;
+          offset -= 8;
+        }
+        tile_addr = (index*16) + (bank*0x1000) + offset;
+      } else {
+        tile_addr = pattern_addr + (tile_index*16) + offset;
+      }
+
+      var low_tile = this.mmc.read_chr(tile_addr);
+      var high_tile = this.mmc.read_chr(tile_addr + 8);
+
+      for(var j=start; j!=end; j+=inc) {
+        if(!this.sprite_rendered[x+j]) {
+          var lower_bit = (low_tile&1) | ((high_tile&1)<<1);
+          if(lower_bit) {
+            if(!bg_pri || !this.bg_rendered[x+j]) {
+              this.line_buf[x+j] = this.palette[0x10|upper_bit|lower_bit];
+              this.sprite_rendered[x+j] = 1;
+            }
+          }
+        }
+
+        low_tile >>= 1;
+        high_tile >>= 1;
+      }
+
+      /*
+      if(this.debug && line == 0x28) {
+        var str = util.to_hex(y) + ","
+          + util.to_hex(tile_index) + ","
+          + util.to_hex(attr_byte) + ","
+          + util.to_hex(x) + ","
+          + util.to_hex(tile_addr) + ","
+          + util.to_hex(low_tile) + ","
+          + util.to_hex(high_tile);
+        util.log(this.nes, str);
+      }
+      */
+    }
+  }
+
+  sprite_evaluation(line) {
+    if(this.nes.reg.sprite_visibility) {
+      var y = this.oamram[0] + 1;
+      var tile_index = this.oamram[1];
+      var attr_byte = this.oamram[2];
+      var height = this.nes.reg.sprite_size? 16:8;
+      var pattern_addr = this.nes.reg.sprite_pattern? 0x1000:0x0000;
+
+      var offset = line - y;
+      if(offset >= 0 && offset < height) {
+        if(attr_byte&0x80)
+          offset = height - 1 - offset;
+
+        var tile_addr = 0;
+        if(height == 16) {
+          var index = tile_index & ~1;
+          var bank = tile_index & 1;
+          if(offset > 7) {
+            index++;
+            offset -= 8;
+          }
+          tile_addr = (index*16) + (bank*0x1000) + offset;
+        } else {
+          tile_addr = pattern_addr + (tile_index*16) + offset;
+        }
+
+        var low_tile = this.mmc.read_chr(tile_addr);
+        var high_tile = this.mmc.read_chr(tile_addr + 8);
+        if(low_tile | high_tile)
+          this.nes.reg.sprite0_hit = true;
+      }
+    }
+  }
+
+  debug_out() {
+    var str = "name_table dump:\n";
+    for(var i=0; i<4; i++) {
+      str += "[" + i + "]:";
+      for(var j=0; j<0x400; j++) {
+        if(j%0x28 == 0)
+          str += "\n";
+        str += util.to_hex(this.name_table[i][j]).padStart(2, "0") + ",";
+      }
+      str += "\n";
+    }
+    util.log(this.nes, str);
+    util.log(this.nes, "palette:" + this.palette);
+  }
+
+  debug_oam_out() {
+    var str = "oamram dump:";
+    for(var i=0; i<0x100; i++) {
+      if(i%0x20 == 0)
+        str += "\n";
+      str += util.to_hex(this.oamram[i]).padStart(2, "0").toUpperCase() + ",";
+    }
+    util.log(this.nes, str);
+  }
+}
+
