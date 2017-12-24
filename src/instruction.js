@@ -454,3 +454,25 @@ export function rts(cpu, cycle) {
   cpu.cycles -= cycle;
 }
 
+export function php(cpu, cycle) {
+  this.push8(cpu, this.get_status(cpu));
+  cpu.cycles -= cycle;
+}
+
+export function plp(cpu, cycle) {
+  this.set_status(cpu, this.pop8(cpu));
+  cpu.cycles -= cycle;
+}
+
+export function pha(cpu, cycle) {
+  this.push8(cpu, cpu.a);
+  cpu.cycles -= cycle;
+}
+
+export function pla(cpu, cycle) {
+  cpu.a = this.pop8(cpu);
+  cpu.n = cpu.a >> 7;
+  cpu.z = cpu.a == 0;
+  cpu.cycles -= cycle;
+}
+

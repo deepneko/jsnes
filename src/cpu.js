@@ -199,29 +199,19 @@ export class CPU {
 
       /* PHP */
       case 0x08:
-        inst.push8(this, inst.get_status(this));
-        this.cycles -= 3;
-        break;
+        inst.php(this, 3); break;
 
       /* PLP */
       case 0x28:
-        inst.set_status(this, inst.pop8(this));
-        this.cycles -= 4;
-        break;
+        inst.plp(this, 4); break;
 
       /* PHA */
       case 0x48:
-        inst.push8(this, this.a);
-        this.cycles -= 3;
-        break;
+        inst.pha(this, 3); break;
 
       /* PLA */
       case 0x68:
-        this.a = inst.pop8(this);
-        this.n = this.a >> 7;
-        this.z = this.a == 0;
-        this.cycles -= 4;
-        break;
+        inst.pla(this, 4); break;
 
       /* ADC */
       case 0x69:

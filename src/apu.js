@@ -1,11 +1,11 @@
 import * as util from './util.js'
 
-export class Apu {
+export class APU {
   constructor(nes) {
     this.nes = nes;
 
-    this.pulse1 = new Pulse();
-    this.pulse2 = new Pulse();
+    this.pulse1 = new Pulse(1);
+    this.pulse2 = new Pulse(2);
     this.triangle = new Triangle();
     this.noise = new Noise();
     this.dmc = new DMC();
@@ -24,9 +24,21 @@ export class Apu {
   write(addr, data) {
     switch(addr) {
     case 0x4000:
+      this.pulse1.duty_cycle = (data>>6) & 3;
+      this.pulse1.length_counter = (data>>5) & 1;
+      this.pulse1.envelope_loop = (data>>5) & 1;
+      this.pulse1.envelope_enable = (data>>4) & 1;
+      this.pulse1.envelope_period = data & 0xf;
+      this.pulse1.constant_volume = data & 0xf;
+      this.pulse1.envelope_start = 1;
       break;
 
     case 0x4001:
+      this.pulse1.sweep_enable = (data>>7) & 1;
+      this.pulse1.sweep_period = (data>>4) & 7 + 1;
+      this.pulse1.sweep_negate = (data>>3) & 1;
+      this.pulse1.sweep_shift = data & 7;
+      this.pulse1.sweep_reload = 1;
       break;
 
     case 0x4002:
@@ -36,9 +48,21 @@ export class Apu {
       break;
 
     case 0x4004:
+      this.pulse2.duty_cycle = (data>>6) & 3;
+      this.pulse2.length_counter = (data>>5) & 1;
+      this.pulse2.envelope_loop = (data>>5) & 1;
+      this.pulse2.envelope_enable = (data>>4) & 1;
+      this.pulse2.envelope_period = data & 0xf;
+      this.pulse2.constant_volume = data & 0xf;
+      this.pulse2.envelope_start = 1;
       break;
 
     case 0x4005:
+      this.pulse2.sweep_enable = (data>>7) & 1;
+      this.pulse2.sweep_period = (data>>4) & 7 + 1;
+      this.pulse2.sweep_negate = (data>>3) & 1;
+      this.pulse2.sweep_shift = data & 7;
+      this.pulse2.sweep_reload = 1;
       break;
 
     case 0x4006:
@@ -92,8 +116,9 @@ export class Apu {
 }
 
 class Pulse {
-  constructor() {
-    this.enable = false;
+  constructor(channel) {
+    this.channel = 0;
+    this.enable = 0;
     this.duty_cycle = 0;
     this.length_counter = 0;
 
@@ -101,7 +126,7 @@ class Pulse {
     this.envelope_volume = 0;
     this.envelope_loop = 0;
     this.envelope_enable = 0;
-    this.envelop_start = 0;
+    this.envelope_start = 0;
     this.envelope_period = 0;
 
     this.timer = 0;
@@ -110,8 +135,9 @@ class Pulse {
     this.sweep = 0;
     this.sweep_enable = 0;
     this.sweep_nagate = 0;
-    this.sweep_shift = 0;
     this.sweep_period = 0;
+    this.sweep_shift = 0;
+    this.sweep_reload = 0;
 
     this.duty_table = [
       [0, 1, 0, 0, 0, 0, 0, 0],
