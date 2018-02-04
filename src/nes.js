@@ -62,11 +62,16 @@ export class NES {
 
   frame() {
     var screen = new Screen(256, 240);
+    var sound = new Sound(this.output);
 
     this.joypad0.input();
     this.joypad1.input();
     this.reg.clear_vblank();
     this.reg.copy_y();
+
+    this.apu.gen_audio(sound);
+    //this.apu.debug_out(sound);
+    this.output.gen_sound(sound);
 
     // Visible scanlines 0-239
     for(var i=0; i<240; i++) {
@@ -79,6 +84,7 @@ export class NES {
       //if(this.ppu.debug)
       //  this.ppu.debug_oam_out();
 
+      this.apu.sync();
       this.cpu.run(this.scanline_cycles);
       this.reg.increment_y();
 
@@ -91,12 +97,14 @@ export class NES {
     // Post-render scanline 240
     if(this.debug)
       util.log(this, "frame i:" + util.to_hex(i));
+    //this.apu.sync();
     this.cpu.run(this.scanline_cycles);
     i++;
 
     // VBlank scanlines started 241
     if(this.debug)
       util.log(this, "frame i:" + util.to_hex(i));
+    //this.apu.sync();
     this.reg.set_vblank();
     this.cpu.run(0);
     this.reg.invoke_nmi();

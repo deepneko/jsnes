@@ -48,7 +48,7 @@ export class Register {
   }
 
   invoke_irq() {
-    if(this.apu.frame_irq)
+    if((this.apu.frame_irq & 0xC0) == 0)
       this.cpu.set_intr(this.cpu.INTR.IRQ);
   }
 
@@ -135,6 +135,9 @@ export class Register {
 
       this.ppu_v += this.ppu_addr_inc ? 32:1;
       return ret;
+
+    case 0x4015:
+      return this.apu.read(addr) | (((this.frame_irq&0xC0)==0)? 0x40:0);
 
     case 0x4016: // SPECIO1  (RW)
       var ret = 0;
@@ -250,6 +253,10 @@ export class Register {
       this.joypad0.strobe = data & 1;
       if(this.joypad0.strobe)
         this.joypad0.index = 0;
+      break;
+
+    case 0x4017:
+      this.apu.frame_irq = data;
       break;
 
     default:

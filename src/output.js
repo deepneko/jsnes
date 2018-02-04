@@ -1,17 +1,29 @@
+import * as util from "./util.js"
+
 export class Output {
   constructor(canvas) {
-    this.bef_width = 0;
-    this.bef_height = 0;
-    this.skip = false;
-
     this.screen_ctx = canvas.getContext('2d');
     this.img = this.screen_ctx.createImageData(256, 240);
     
     this.sound_ctx = new AudioContext();
-    this.dat = 0;
+    this.data = 0;
     this.play = 0;
+    this.buf = new Uint16Array(0x1000);
 
-    console.log("constructor Render", this);
+    this.hpf1 = this.sound_ctx.createBiquadFilter();
+    this.hpf1.type = "highpass";
+    this.hpf1.frequency.value = 90;
+
+    this.hpf2 = this.sound_ctx.createBiquadFilter();
+    this.hpf2.type = "highpass";
+    this.hpf2.frequency.value = 440;
+
+    this.lpf = this.sound_ctx.createBiquadFilter();
+    this.lpf.type = "lowpass";
+    this.lpf.frequency.value = 14000;
+
+    this.nes = null;
+    console.log("constructor Output", this);
   }
 
   rendering(screen) {
@@ -20,25 +32,32 @@ export class Output {
     this.screen_ctx.putImageData(this.img, 0, 0);
   }
 
-  generate_sound(sound) {
+  gen_sound(sound) {
+    var audio_buf = this.sound_ctx.createBuffer(1, sound.sample, sound.freq);
+    var buffering = audio_buf.getChannelData(0);
+    for(var i=0; i<sound.sample; i++) {
+      //buffering[i] = util.to_u16(sound.buf[i]) / 65536;
+      buffering[i] = sound.buf[i] / 65536;
+      //buffering[i] = (sound.buf[i] + 16000) / 65536;
+    }
+
+    var sound_src = this.sound_ctx.createBufferSource();
+    sound_src.buffer = audio_buf;
+    sound_src.connect(this.sound_ctx.destination);
+    /*
+    sound_src.connect(this.hpf1);
+    this.hpf1.connect(this.hpf2);
+    this.hpf2.connect(this.lpf);
+    this.lpf.connect(this.sound_ctx.destination);
+    */
+    sound_src.start();
+
+    /*
+    var str = "buffering:";
     for(var i=0; i<sound.sample; i++)
-      this.buf[(this.dat+i)%4096] = sound.buf[i];
-    this.dat = (this.dat + sound.sample) % 4096;
-
-    var src = this.sound_ctx.createBufferSource();
-
-    var audio_buf = this.sound_ctx.createBuffer(sound.ch, sound.sample, sound.freq);
-    var data = audio_buf.getChannelData(sound.ch - 1);
-    for(i = 0; i<sound.sample; i++)
-      data[i] = this.buf[i];
-    src.buffer = audio_buf;
-
-    var audio_gain = this.sound_ctx.createGain();
-    src.connect(audio_gain);
-    audio_gain.connect(this.sound_ctx.destination);
-    audio_gain.gain.value = 0.1;
-
-    src.start();
+      str += buffering[i] + ",";
+    util.log(this.nes, str);
+    */
   }
 }
 
@@ -53,13 +72,16 @@ export class Screen {
 }
 
 export class Sound {
-  constructor(dat, play) {
+  constructor(output) {
     this.buf = new Int16Array(4096);
     this.freq = 44100;
     this.bps = 16;
     this.ch = 1;
-    var sample = (dat + 4096 - play) % 4096;
+    /*
+    var sample = (output.data + 4096 - output.play) % 4096;
     this.sample = sample == 0? 4096:sample;
+    */
+    this.sample = 1024;
   }
 }
 

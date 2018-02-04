@@ -4,6 +4,7 @@ import * as util from './util.js'
 export class CPU {
   constructor(nes) {
     this.nes = nes;
+    this.frequency = 1789773;
     this.debug = false;
     this.INTR = { NMI:0, IRQ:1, RESET:2 };
     this.INTR_VECTOR = [ 0xFFFA, 0xFFFE, 0xFFFC ];
@@ -27,8 +28,13 @@ export class CPU {
 
     this.cycles = 0;
     this.op_addr = 0x00;
+    this.mclock = 0;
 
     this.intr_occur = null;
+  }
+
+  master_clock() {
+    return this.mclock - this.cycles;
   }
 
   read8(addr) {
@@ -89,6 +95,7 @@ export class CPU {
 
   run(cycle) {
     this.cycles += cycle;
+    this.mclock += cycle;
 
     do {
       this.check_intr();
