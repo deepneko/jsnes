@@ -3,6 +3,8 @@ import * as util from './util.js'
 export class APU {
   constructor(nes) {
     this.nes = nes;
+    this.cpu_clock = this.nes.cpu.frequency;
+    this.clock_per_frame = this.cpu_clock / 60;
 
     this.pulse1 = new Pulse();
     this.pulse2 = new Pulse();
@@ -10,37 +12,43 @@ export class APU {
     this.noise = new Noise();
     this.dmc = new DMC();
 
-    this.CH_TYPE = { SQ1:0, SQ2:1, TRI:2, NOI:3, DMC:4 };
-    this.ch = new Array(4);
-    this.ch[this.CH_TYPE.SQ1] = this.pulse1;
-    this.ch[this.CH_TYPE.SQ2] = this.pulse2;
-    this.ch[this.CH_TYPE.TRI] = this.triangle;
-    this.ch[this.CH_TYPE.NOI] = this.noise;
-
     this.write_queue = new util.Queue();
-    this.bef_clock = 0;
+    this.pre_clock = 0;
     this.bef_sync = 0;
 
-    this.conv_table = new Int32Array([
-        0x002, 0x004, 0x008, 0x010,
-        0x020, 0x030, 0x040, 0x050,
-        0x065, 0x07F, 0x0BE, 0x0FE,
-        0x17D, 0x1FC, 0x3F9, 0x7F2,
-      ]);
+    this.length_counter_table = [
+      10,254, 20,  2, 40,  4, 80,  6, 160,  8, 60, 10, 14, 12, 26, 14,
+      12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30,
+    ];
 
-    this.length_table = new Int32Array([
-        0x05, 0x06, 0x0A, 0x0C,
-        0x14, 0x18, 0x28, 0x30,
-        0x50, 0x60, 0x1E, 0x24,
-        0x07, 0x08, 0x0E, 0x10,
-      ]);
+    this.duty_table = [
+      [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1],
+      ];
 
-    this.dac_table = new Int32Array([
-        0xD60, 0xBE0, 0xAA0, 0xA00,
-        0x8F0, 0x7F0, 0x710, 0x6B0,
-        0x5F0, 0x500, 0x470, 0x400,
-        0x350, 0x2A0, 0x240, 0x1B0,
-      ]);
+    /*
+    this.duty_table = [
+      [0, 1, 0, 0, 0, 0, 0, 0],
+      [0, 1, 1, 0, 0, 0, 0, 0],
+      [0, 1, 1, 1, 1, 0, 0, 0],
+      [1, 0, 0, 1, 1, 1, 1, 1],
+    ];
+    */
+
+    this.triangle_table = [
+      15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    ];
+
+    this.noise_table = [
+      4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068,
+    ];
+
+    this.dmc_table = [
+      428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106,  84,  72,  54,
+    ];
 
     this.frame_period = 0;
     this.frame_irq = 0xff;
@@ -49,47 +57,59 @@ export class APU {
   reset() {
     this.noise.shift_register = 1;
 
-    this.bef_clock = 0;
+    this.pre_clock = 0;
     this.bef_sync = 0;
   }
 
   sync() {
-    var cpu_clock = this.nes.cpu.frequency;
     var cur = this.nes.cpu.master_clock();
     var adv_clock = util.to_s32(cur) - this.bef_sync;
 
-    for(var i=0; i<4; i++) {
-      var ch = this.ch[i];
-      if(ch.enable && ch.length_enable) {
-        var length_clk = cpu_clock / 60.0;
-        ch.length_clk += adv_clock;
-        var dec = util.to_s32(ch.length_clk / length_clk);
-        ch.length_clk -= length_clk * dec;
-        ch.length = util.get_max(0, ch.length-dec);
-      }
+    if(this.pulse1.enable && this.pulse1.length_counter_enable) {
+      this.pulse1.length_clock += adv_clock;
+      var dec = util.to_s32(this.pulse1.length_clock / this.clock_per_frame);
+      this.pulse1.length_clock -= this.clock_per_frame * dec;
+      this.pulse1.length_counter = util.get_max(0, this.pulse1.length_counter-dec);
+    }
+
+    if(this.pulse2.enable && this.pulse2.length_counter_enable) {
+      this.pulse2.length_clock += adv_clock;
+      var dec = util.to_s32(this.pulse2.length_clock / this.clock_per_frame);
+      this.pulse2.length_clock -= this.clock_per_frame * dec;
+      this.pulse2.length_counter = util.get_max(0, this.pulse2.length_counter-dec);
+    }
+
+    if(this.triangle.enable && this.triangle.length_counter_enable) {
+      this.triangle.length_clock += adv_clock;
+      var dec = util.to_s32(this.triangle.length_clock / this.clock_per_frame);
+      this.triangle.length_clock -= this.clock_per_frame * dec;
+      this.triangle.length_counter = util.get_max(0, this.triangle.length_counter-dec);
+    }
+
+    if(this.noise.enable && this.noise.length_counter_enable) {
+      this.noise.length_clock += adv_clock;
+      var dec = util.to_s32(this.noise.length_clock / this.clock_per_frame);
+      this.noise.length_clock -= this.clock_per_frame * dec;
+      this.noise.length_counter = util.get_max(0, this.noise.length_counter-dec);
     }
 
     if(this.dmc.enable) {
-      this.dmc.clk += adv_clock;
-      var dec = util.to_s32(this.dmc.clk / this.dmc.wave_length);
-      this.dmc.clk -= dec * this.dmc.wave_length;
+      this.dmc.clock += adv_clock;
+      var dec = util.to_s32(this.dmc.clock / this.dmc.timer_period);
+      this.dmc.clock -= dec * this.dmc.timer_period;
 
-      var rest = util.to_s32(this.dmc.shift_count + (this.dmc.length*8) - dec);
+      var rest = util.to_s32(this.dmc.shift_count + (this.dmc.length_counter*8) - dec);
       if(rest <= 0) {
-        if(this.dmc.playback_mode & 1) {
-          this.dmc.length = rest / 8;
-          while(this.dmc.length < 0)
-            this.dmc.length += this.dmc.length_latch;
+        if(this.dmc.loop) {
+          this.dmc.length_counter = rest / 8;
+          while(this.dmc.length_counter < 0)
+            this.dmc.length_counter += this.dmc.sample_length;
           this.dmc.shift_count = 0;
         } else {
-          this.dmc.enable = false;
-          if(this.dmc.playback_mode == 2) {
-            this.dmc.irq = true;
-            this.nes.reg.invoke_irq(true);
-          }
+          this.dmc.enable = 0;
         }
       } else {
-        this.dmc.length = rest / 8;
+        this.dmc.length_counter = rest / 8;
         this.dmc.shift_count = rest % 8;
       }
     }
@@ -100,12 +120,12 @@ export class APU {
   read(addr) {
     if(addr == 0x4015) {
       this.sync();
-      var ret = (this.pulse1.length == 0 ? 0:1) |
-        ((this.pulse2.length == 0 ? 0:1) << 1) |
-        ((this.triangle.length == 0 ? 0:1) << 2) |
-        ((this.noise.length == 0 ? 0:1) << 3) |
-        ((this.dmc.enable? 1:0) << 4) |
-        ((this.dmc.irq? 1:0) << 7);
+      var ret = this.pulse1.length_counter |
+        (this.pulse2.length_counter << 1) |
+        (this.triangle.length_counter << 2) |
+        (this.noise.length_counter << 3) |
+        (this.dmc.enable << 4) |
+        (this.dmc.irq << 7);
       return util.to_u8(ret);
     }
 
@@ -117,162 +137,127 @@ export class APU {
 
     var wd = new Write_dat(this.nes.cpu.master_clock(), addr, dat);
     this.write_queue.push(wd);
-    this._write(this.ch, this.dmc, addr, dat);
+    this._write(this.dmc, addr, dat);
   }
 
-  _write(ch, dmc, addr, dat) {
+  _write(dmc, addr, dat) {
     switch(addr) {
     /* Pulse 1 */
     case 0x4000:
-      this.pulse1.envelope_enable = (dat&0x10) == 0;
-      if(this.pulse1.envelope_enable) {
-        this.pulse1.volume = 0xf;
-        this.pulse1.envelope_rate = dat & 0xf;
-      } else {
-        this.pulse1.volume = dat & 0xf;
-      }
-      this.pulse1.length_enable = (dat&0x20) == 0;
-      this.pulse1.duty = dat >> 6;
-      this.pulse1.envelope_clk = 0;
+      this.pulse1.envelope_enable = (dat>>4) & 1;
+      this.pulse1.envelope_volume = dat & 0xf;
+      this.pulse1.envelope_period = dat & 0xf;
+      this.pulse1.length_counter_enable = (dat>>5) & 1;
+      this.pulse1.duty_cycle = dat >> 6;
+      this.pulse1.envelope_clock = 0;
       break;
 
     case 0x4001:
       this.pulse1.sweep_shift = dat & 7;
-      this.pulse1.sweep_mode = (dat&0x8) != 0;
-      this.pulse1.sweep_rate = (dat>>4) & 7;
-      this.pulse1.sweep_enable = (dat&0x80) != 0;
-      this.pulse1.sweep_clk = 0;
-      this.pulse1.sweep_pausing = false;
+      this.pulse1.sweep_negate = (dat>>3) & 1;
+      this.pulse1.sweep_period = (dat>>4) & 7;
+      this.pulse1.sweep_enable = (dat>>7) & 1;
+      this.pulse1.sweep_clock = 0;
+      this.pulse1.sweep_pausing = 0;
       break;
 
     case 0x4002:
-      this.pulse1.wave_length = (this.pulse1.wave_length&~0xff) | dat;
+      this.pulse1.timer_period = (this.pulse1.timer_period&0xff00) | dat;
       break;
 
     case 0x4003:
-      this.pulse1.wave_length = (this.pulse1.waev_length&0xff) | ((dat&0x7) << 8);
-
-      if((dat&0x8) == 0)
-        this.pulse1.length = this.length_table[dat>>4];
-      else
-        this.pulse1.length = (dat>>4) == 0? 0x7f:(dat>>4);
+      this.pulse1.timer_period = (this.pulse1.timer_period&0x00ff) | ((dat&7) << 8);
+      this.pulse1.length_counter = this.length_counter_table[dat>>3];
 
       if(this.pulse1.envelope_enable) {
-        this.pulse1.volume = 0xf;
-        this.pulse1.envelope_clk = 0;
+        this.pulse1.envelope_volume = 0xf;
+        this.pulse1.envelope_clock = 0;
       }
       break;
 
     /* Pulse 2 */
     case 0x4004:
-      this.pulse2.envelope_enable = (dat&0x10) == 0;
-      if(this.pulse2.envelope_enable) {
-        this.pulse2.volume = 0xf;
-        this.pulse2.envelope_rate = dat & 0xf;
-      } else {
-        this.pulse2.volume = dat & 0xf;
-      }
-      this.pulse2.length_enable = (dat&0x20) == 0;
-      this.pulse2.duty = dat >> 6;
-      this.pulse2.envelope_clk = 0;
+      this.pulse2.envelope_enable = (dat>>4) & 1;
+      this.pulse2.envelope_period = dat & 0xf;
+      this.pulse2.envelope_volume = dat & 0xf;
+      this.pulse2.length_counter_enable = (dat>>5) & 1;
+      this.pulse2.duty_cycle = dat >> 6;
+      this.pulse2.envelope_clock = 0;
       break;
 
     case 0x4005:
       this.pulse2.sweep_shift = dat & 7;
-      this.pulse2.sweep_mode = (dat&0x8) != 0;
-      this.pulse2.sweep_rate = (dat>>4) & 7;
-      this.pulse2.sweep_enable = (dat&0x80) != 0;
-      this.pulse2.sweep_clk = 0;
-      this.pulse2.sweep_pausing = false;
+      this.pulse2.sweep_negate = (dat>>3) & 1;
+      this.pulse2.sweep_period = (dat>>4) & 7;
+      this.pulse2.sweep_enable = (dat>>7) & 1;
+      this.pulse2.sweep_clock = 0;
+      this.pulse2.sweep_pausing = 0;
       break;
 
     case 0x4006:
-      this.pulse2.wave_length = (this.pulse2.wave_length&~0xff) | dat;
+      this.pulse2.timer_period = (this.pulse2.timer_period&~0xff) | dat;
       break;
 
     case 0x4007:
-      this.pulse2.wave_length = (this.pulse2.waev_length&0xff) | ((dat&0x7) << 8);
-
-      if((dat&0x8) == 0)
-        this.pulse2.length = this.length_table[dat>>4];
-      else
-        this.pulse2.length = (dat>>4) == 0? 0x7f:(dat>>4);
+      this.pulse2.timer_period = (this.pulse2.timer_period&0xff) | ((dat&0x7) << 8);
+      this.pulse2.length_counter = this.length_counter_table[dat>>3];
 
       if(this.pulse2.envelope_enable) {
-        this.pulse2.volume = 0xf;
-        this.pulse2.envelope_clk = 0;
+        this.pulse2.envelope_volume = 0xf;
+        this.pulse2.envelope_clock = 0;
       }
       break;
 
     /* Triangle */
     case 0x4008:
-      this.triangle.linear_latch = dat & 0x7f;
-      this.triangle.holdnote = (dat&0x80) != 0;
+      this.triangle.length_counter_enable = (dat>>7) & 1;
+      this.triangle.counter_reload_value = dat & 0x7f;
       break;
 
     case 0x4009:
       break;
 
     case 0x400A:
-      this.triangle.wave_length = (this.triangle.wave_length&~0xff) | dat;
+      this.triangle.timer_period = (this.triangle.timer_period&~0xff) | dat;
       break;
 
     case 0x400B:
-      this.triangle.wave_length = (this.triangle.waev_length&0xff) | ((dat&0x7) << 8);
-
-      if((dat&0x8) == 0)
-        this.triangle.length = this.length_table[dat>>4];
-      else
-        this.triangle.length = (dat>>4) == 0? 0x7f:(dat>>4);
-
-      this.triangle.counter_start = true;
-
-      if(this.triangle.envelope_enable) {
-        this.triangle.volume = 0xf;
-        this.triangle.envelope_clk = 0;
-      }
+      this.triangle.timer_period = (this.triangle.timer_period&0xff) | ((dat&0x7) << 8);
+      this.triangle.length_counter = this.length_counter_table[dat>>3];
+      this.triangle.counter_reload_flag = 1;
       break;
 
     /* Noise */
     case 0x400C:
-      this.noise.envelope_enable = (dat&0x10) == 0;
-      if(this.noise.envelope_enable) {
-        this.noise.volume = 0xf;
-        this.noise.envelope_rate = dat & 0xf;
-      } else {
-        this.noise.volume = dat & 0xf;
-      }
-      this.noise.length_enable = (dat&0x20) == 0;
-      this.noise.duty = dat >> 6;
-      this.noise.envelope_clk = 0;
+      this.noise.envelope_enable = (dat>>4) & 1;
+      this.noise.envelope_period = dat & 0xf;
+      this.noise.envelope_volume = dat & 0xf;
+      this.noise.length_counter_enable = (dat>>5) & 1;
+      this.noise.envelope_clock = 0;
       break;
 
     case 0x400D:
       break;
 
     case 0x400E:
-      this.noise.wave_length = this.conv_table[dat&0xf] - 1;
-      this.noise.random_type = (dat&0x80) != 0;
+      this.noise.timer_period = this.noise_table[dat&0xf] - 1;
+      this.noise.mode = (dat>>7) & 1;
       break;
 
     case 0x400F:
-      if((dat&0x8) == 0)
-        this.noise.length = this.length_table[dat>>4];
-      else
-        this.noise.length = (dat>>4) == 0? 0x7f:(dat>>4);
+      this.noise.length_counter = this.length_counter_table[dat>>3];
 
       if(this.noise.envelope_enable) {
-        this.noise.volume = 0xf;
-        this.noise.envelope_clk = 0;
+        this.noise.envelope_volume = 0xf;
+        this.noise.envelope_clock = 0;
       }
       break;
 
     /* DMC */
     case 0x4010:
-      dmc.playback_mode = dat >> 6;
-      dmc.wave_length = util.to_u32(this.dac_table[dat&0xf] / 8);
-      if((dat>>7) == 0)
-        dmc.irq = false;
+      dmc.irq = !((dat>>7) & 1);
+      dmc.loop = (dat>>6) & 1;
+      dmc.timer_period = util.to_u32(this.dmc_table[dat&0xf] / 8);
       break;
 
     case 0x4011:
@@ -281,270 +266,263 @@ export class APU {
       break;
 
     case 0x4012:
-      dmc.addr_latch = (dat<<6) | 0xc000;
+      dmc.sample_addr = (dat<<6) + 0xc000;
       break;
 
     case 0x4013:
-      dmc.length_latch = (dat<<4) + 1;
+      dmc.sample_length = (dat<<4) + 1;
       break;
 
+    /* Enable channels */
     case 0x4015:
-      this.pulse1.enable = (dat&1) != 0;
+      this.pulse1.enable = dat&1;
       if(!this.pulse1.enable)
-        this.pulse1.length = 0;
+        this.pulse1.length_counter = 0;
 
-      this.pulse2.enable = (dat&2) != 0;
+      this.pulse2.enable = (dat&2) >> 1;
       if(!this.pulse2.enable)
-        this.pulse2.length = 0;
+        this.pulse2.length_counter = 0;
 
-      this.triangle.enable = (dat&4) != 0;
+      this.triangle.enable = (dat&4) >> 2;
       if(!this.triangle.enable)
-        this.triangle.length = 0;
+        this.triangle.length_counter = 0;
 
-      this.noise.enable = (dat&8) != 0;
+      this.noise.enable = (dat&8) >> 3;
       if(!this.noise.enable)
-        this.noise.length = 0;
+        this.noise.length_counter = 0;
 
       if(dat&0x10) {
         if(!dmc.enable) {
-          dmc.addr = dmc.addr_latch;
-          dmc.length = dmc.length_latch;
+          dmc.addr = dmc.sample_addr;
+          dmc.length_counter = dmc.sample_length;
           dmc.shift_count = 0;
         }
-        dmc.enable = true;
+        dmc.enable = 1;
       } else {
-        dmc.enable = false;
+        dmc.enable = 0;
       }
 
-      dmc.irq = false;
+      dmc.irq = 0;
       break;
     }
   }
 
-  gen_pulse(pulse, cpu_clock, inc_clk, sample_clk) {
-    var pause = false;
+  gen_pulse(pulse, clock_per_sample, clock_per_freq) {
+    var pause = 0;
     var vol = 16;
 
     if(!pulse.enable)
       return 0;
-    if(pulse.length == 0)
-      pause = true;
+    if(pulse.length_counter == 0)
+      pause = 1;
 
-    if(pulse.length_enable) {
-      var length_clk = cpu_clock / 60.0;
-      pulse.length_clk += inc_clk;
-      while(pulse.length_clk > length_clk) {
-        pulse.length_clk -= length_clk;
-        if(pulse.length>0)
-          pulse.length--;
+    // Length Counter
+    if(pulse.length_counter_enable) {
+      pulse.length_clock += clock_per_sample;
+      while(pulse.length_clock > this.clock_per_frame) {
+        pulse.length_clock -= this.clock_per_frame;
+        if(pulse.length_counter > 0)
+          pulse.length_counter--;
       }
     }
 
+    // Envelope
     if(pulse.envelope_enable) {
-      var decay_clk = cpu_clock / (240.0 / (pulse.envelope_rate+1));
-      pulse.envelope_clk += inc_clk;
-      while(pulse.envelope_clk > decay_clk) {
-        pulse.envelope_clk -= decay_clk;
+      var decay_clk = this.cpu_clock / (240.0 / (pulse.envelope_period+1));
+      pulse.envelope_clock += clock_per_sample;
+      while(pulse.envelope_clock > decay_clk) {
+        pulse.envelope_clock -= decay_clk;
 
-        if(pulse.volume > 0) {
-          pulse.volume--;
-        } else if(!pulse.length_enable) {
-          pulse.volume = 0xf;
+        if(pulse.envelope_volume > 0) {
+          pulse.envelope_volume--;
+        } else if(!pulse.length_counter_enable) {
+          pulse.envelope_volume = 0xf;
         } else {
-          pulse.volume = 0;
+          pulse.envelope_volume = 0;
         }
       }
     }
-    vol = pulse.volume;
+    vol = pulse.envelope_volume;
 
+    // Sweep
     if(pulse.sweep_enable && !pulse.sweep_pausing) {
-      var sweep_clk = cpu_clock / (120.0 / (pulse.sweep_rate+1));
-      pulse.sweep_clk += inc_clk;
-      while(pulse.sweep_clk > sweep_clk) {
-        pulse.sweep_clk -= sweep_clk;
-        if(pulse.sweep_shift && pulse.length) {
-          if(!pulse.sweep_mode)
-            pulse.wave_length += pulse.wave_length >> pulse.sweep_shift;
+      var sweep_clock = this.cpu_clock / (120.0 / (pulse.sweep_period+1));
+      pulse.sweep_clock += clock_per_sample;
+      while(pulse.sweep_clock > sweep_clock) {
+        pulse.sweep_clock -= sweep_clock;
+        if(pulse.sweep_shift && pulse.length_counter) {
+          if(!pulse.sweep_negate)
+            pulse.timer_period += pulse.timer_period >> pulse.sweep_shift;
           else
-            pulse.wave_length += ~(pulse.wave_length >> pulse.sweep_shift);
+            pulse.timer_period += ~(pulse.timer_period >> pulse.sweep_shift);
 
-          if(pulse.wave_length < 0x008)
-            pulse.sweep_pausing = true;
-          if(pulse.wave_length & ~0x7FF)
-            pulse.sweep_pausing = true;
+          if(pulse.timer_period < 0x008)
+            pulse.sweep_pausing = 1;
+          if(pulse.timer_period & ~0x7FF)
+            pulse.sweep_pausing = 1;
 
-          pulse.wave_length &= 0x7FF;
+          pulse.timer_period &= 0x7FF;
         }
       }
     }
 
     pause |= pulse.sweep_pausing;
-    pause |= pulse.wave_length == 0;
+    pause |= pulse.timer_period == 0;
 
     var t = 0;
     var v = 0;
     if(!pause) {
-      t = this.pulse_produce(pulse, sample_clk);
+      t = this.pulse_produce(pulse, clock_per_freq);
       v = t * vol / 16;
     }
 
     return v;
   }
 
-  pulse_produce(pulse, clk) {
+  pulse_produce(pulse, clock_per_freq) {
     //util.log(this.nes, "pulse_produce");
 
-    var sq_wav = [
-      [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-      [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-      [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1],
-      ];
+    pulse.step_clock += clock_per_freq;
+    var ret = 0.5-this.duty_table[pulse.duty_cycle][pulse.step];
+    var term = pulse.timer_period + 1;
 
-    pulse.step_clk += clk;
-    var ret = 0.5-sq_wav[pulse.duty][pulse.step];
-    var term = pulse.wave_length + 1;
-
-    if(pulse.step_clk >= term) {
-      var t = util.to_s32(pulse.step_clk / term);
-      pulse.step_clk -= term * t;
+    if(pulse.step_clock >= term) {
+      var t = util.to_s32(pulse.step_clock / term);
+      pulse.step_clock -= term * t;
       pulse.step = (pulse.step + t) % 16;
     }
 
     return ret;
   }
 
-  gen_triangle(cpu_clock, inc_clk, sample_clk) {
-    var pause = false;
+  gen_triangle(clock_per_sample, clock_per_freq) {
+    var pause = 0;
     var vol = 16;
 
     if(!this.triangle.enable)
       return 0;
-    if(this.triangle.length == 0)
-      pause = true;
+    if(this.triangle.length_counter == 0)
+      pause = 1;
 
-    if(this.triangle.length_enable) {
-      var length_clk = cpu_clock / 60.0;
-      this.triangle.length_clk += inc_clk;
-      while(this.triangle.length_clk > length_clk) {
-        this.triangle.length_clk -= length_clk;
-        if(this.triangle.length>0)
-          this.triangle.length--;
+    // Length Counter
+    if(this.triangle.length_counter_enable) {
+      this.triangle.length_clock += clock_per_sample;
+      while(this.triangle.length_clock > this.clock_per_frame) {
+        this.triangle.length_clock -= this.clock_per_frame;
+        if(this.triangle.length_counter > 0)
+          this.triangle.length_counter--;
       }
     }
 
-    if(this.triangle.counter_start) {
-      this.triangle.linear_counter = this.triangle.linear_latch;
+    // Linear Counter
+    if(this.triangle.counter_reload_flag) {
+      this.triangle.linear_counter = this.triangle.counter_reload_value;
     } else {
-      var linear_clk = cpu_clock / 240.0;
-      this.triangle.linear_clk += inc_clk;
-      while(this.triangle.linear_clk > linear_clk) {
-        this.triangle.linear_clk -= linear_clk;
+      var linear_clock = this.cpu_clock / 240.0;
+      this.triangle.linear_clock += clock_per_sample;
+      while(this.triangle.linear_clock > linear_clock) {
+        this.triangle.linear_clock -= linear_clock;
         if(this.triangle.linear_counter > 0)
           this.triangle.linear_counter--;
       }
     }
 
-    if(!this.triangle.holdnote && this.triangle.linear_counter)
-      this.triangle.counter_start = false;
+    if(!this.triangle.length_counter_enable && this.triangle.linear_counter)
+      this.triangle.counter_reload_flag = 0;
 
     if(this.triangle.linear_counter == 0)
-      pause = true;
+      pause = 1;
 
     pause |= this.triangle.sweep_pausing;
-    pause |= this.triangle.wave_length == 0;
+    pause |= this.triangle.timer_period == 0;
 
     var t = 0;
     var v = 0;
     if(!pause) {
-      t = this.tri_produce(sample_clk);
+      t = this.tri_produce(clock_per_freq);
       v = t * vol / 16;
     }
 
     return v;
   }
 
-  tri_produce(clk) {
+  tri_produce(clock_per_freq) {
     //util.log(this.nes, "tri_produce");
 
-    var tri_wav = [
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-      15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-    ];
+    this.triangle.step_clock += clock_per_freq;
+    var ret = (this.triangle_table[this.triangle.step] / 16.0) - 0.5;
+    var term = this.triangle.timer_period + 1;
 
-    this.triangle.step_clk += clk;
-    var ret = (tri_wav[this.triangle.step] / 16.0) - 0.5;
-    var term = this.triangle.wave_length + 1;
-
-    if(this.triangle.step_clk >= term) {
-      var t = util.to_s32(this.triangle.step_clk / term);
-      this.triangle.step_clk -= term * t;
+    if(this.triangle.step_clock >= term) {
+      var t = util.to_s32(this.triangle.step_clock / term);
+      this.triangle.step_clock -= term * t;
       this.triangle.step = (this.triangle.step + t) % 32;
     }
 
     return ret;
   }
 
-  gen_noise(cpu_clock, inc_clk, sample_clk) {
-    var pause = false;
+  gen_noise(clock_per_sample, clock_per_freq) {
+    var pause = 0;
     var vol = 16;
 
     if(!this.noise.enable)
       return 0;
-    if(this.noise.length == 0)
-      pause = true;
+    if(this.noise.length_counter == 0)
+      pause = 1;
 
-    if(this.noise.length_enable) {
-      var length_clk = cpu_clock / 60.0;
-      this.noise.length_clk += inc_clk;
-      while(this.noise.length_clk > length_clk) {
-        this.noise.length_clk -= length_clk;
-        if(this.noise.length>0)
-          this.noise.length--;
+    // Length Counter
+    if(this.noise.length_counter_enable) {
+      this.noise.length_clock += clock_per_sample;
+      while(this.noise.length_clock > this.clock_per_frame) {
+        this.noise.length_clock -= this.clock_per_frame;
+        if(this.noise.length_counter > 0)
+          this.noise.length_counter--;
       }
     }
 
+    // Envelope
     if(this.noise.envelope_enable) {
-      var decay_clk = cpu_clock / (240.0 / (this.noise.envelope_rate+1));
-      this.noise.envelope_clk += inc_clk;
-      while(this.noise.envelope_clk > decay_clk) {
-        this.noise.envelope_clk -= decay_clk;
+      var decay_clk = this.cpu_clock / (240.0 / (this.noise.envelope_period+1));
+      this.noise.envelope_clock += clock_per_sample;
+      while(this.noise.envelope_clock > decay_clk) {
+        this.noise.envelope_clock -= decay_clk;
 
-        if(this.noise.volume > 0) {
-          this.noise.volume--;
-        } else if(!this.noise.length_enable) {
-          this.noise.volume = 0xf;
+        if(this.noise.envelope_volume > 0) {
+          this.noise.envelope_volume--;
+        } else if(!this.noise.length_counter_enable) {
+          this.noise.envelope_volume = 0xf;
         } else {
-          this.noise.volume = 0;
+          this.noise.envelope_volume = 0;
         }
       }
     }
-    vol = this.noise.volume;
+    vol = this.noise.envelope_volume;
 
     pause |= this.noise.sweep_pausing;
-    pause |= this.noise.wave_length == 0;
+    pause |= this.noise.timer_period == 0;
 
     var t = 0;
     var v = 0;
     if(!pause) {
-      t = this.noi_produce(sample_clk);
+      t = this.noi_produce(clock_per_freq);
       v = t * vol / 16;
     }
 
     return v;
   }
 
-  noi_produce(clk) {
+  noi_produce(clock_per_freq) {
     //util.log(this.nes, "noi_produce");
 
-    this.noise.step_clk += clk;
+    this.noise.step_clock += clock_per_freq;
     var ret = 0.5 - (this.noise.shift_register >> 14);
-    var term = this.noise.wave_length + 1;
+    var term = this.noise.timer_period + 1;
 
-    while(this.noise.step_clk >= term) {
-      this.noise.step_clk -= term;
+    while(this.noise.step_clock >= term) {
+      this.noise.step_clock -= term;
       var t = util.to_s32(this.noise.shift_register);
-      if(this.noise.random_type)
+      if(this.noise.mode)
         this.noise.shift_register= ((t<<1) | (((t>>14) ^ (t>>8)) & 1)) & 0x7fff;
       else
         this.noise.shift_register= ((t<<1) | (((t>>14) ^ (t>>13)) & 1)) & 0x7fff;
@@ -553,25 +531,23 @@ export class APU {
     return ret;
   }
 
-  dmc_produce(clk) {
+  dmc_produce(clock_per_freq) {
     //util.log(this.nes, "dmc_produce");
 
     if(!this.dmc.enable)
       return (((this.dmc.counter<<1) | this.dmc.dac_lsb) / 32.0);
       //return ((((this.dmc.counter<<1) | this.dmc.dac_lsb) - 64) / 32.0);
 
-    this.dmc.clk += clk;
-    while(this.dmc.clk > this.dmc.wave_length) {
-      this.dmc.clk -= this.dmc.wave_length;
+    this.dmc.clock += clock_per_freq;
+    while(this.dmc.clock > this.dmc.timer_period) {
+      this.dmc.clock -= this.dmc.timer_period;
       if(this.dmc.shift_count == 0) {
-        if(this.dmc.length == 0) {
-          if(this.dmc.playback_mode & 1) {
-            this.dmc.addr = this.dmc.addr_latch;
-            this.dmc.length = this.dmc.length_latch;
+        if(this.dmc.length_counter == 0) {
+          if(this.dmc.loop) {
+            this.dmc.addr = this.dmc.sample_addr;
+            this.dmc.length_counter = this.dmc.sample_length;
           } else {
-            this.dmc.enable = false;
-            if(this.dmc.playback_mode == 2)
-              this.dmc.irq = true;
+            this.dmc.enable = 0;
             //return ((((this.dmc.counter<<1) | this.dmc.dac_lsb) - 64) / 32.0);
             return (((this.dmc.counter<<1) | this.dmc.dac_lsb) / 32.0);
           }
@@ -584,10 +560,10 @@ export class APU {
           this.dmc.addr = 0x8000;
         else
           this.dmc.addr += 1;
-        this.dmc.length--;
+        this.dmc.length_counter--;
       }
 
-      var b = this.dmc.shift_req & 1;
+      var b = this.dmc.shift_reg & 1;
       if(b == 0 && this.dmc.counter)
         this.dmc.counter--;
       if(b == 1 && this.dmc.counter != 0x3F)
@@ -603,28 +579,29 @@ export class APU {
   }
 
   gen_audio(sndi) {
-    var cpu_clock = this.nes.cpu.frequency;
     var cur_clock = this.nes.cpu.master_clock();
-    var inc_clk = (cur_clock - this.bef_clock) / sndi.sample;
-    var sample_clk = cpu_clock / sndi.freq;
+    var clock_per_sample = (cur_clock - this.pre_clock) / sndi.sample;
+    var clock_per_freq = this.cpu_clock / sndi.freq;
 
-    for(var i=0; i<sndi.bps/8*sndi.sample*sndi.ch; i++)
+    util.log(this.nes, "gen_audio:" + cur_clock.toString(10).padStart(10, " ") + ":" + this.pre_clock.toString(10).padStart(10, " ") + ":" + clock_per_sample.toString(10).padStart(20, " ") + ":" + clock_per_freq.toString(10).padStart(20, " "));
+
+    for(var i=0; i<(sndi.bps/8 * sndi.sample * sndi.ch); i++)
       sndi.buf[i] = 0;
 
     for(i=0; i<sndi.sample; i++) {
-      var pos = ((cur_clock - this.bef_clock) * i / sndi.sample) + this.bef_clock;
+      var pos = (clock_per_sample * i) + this.pre_clock;
       while(!this.write_queue.empty() && this.write_queue.front().clk <= pos) {
         var w = this.write_queue.front();
         this.write_queue.pop();
-        this._write(this.ch, this.dmc, w.addr, w.dat);
+        this._write(this.dmc, w.addr, w.dat);
       }
 
       var v = 0;
-      v += this.gen_pulse(this.pulse1, cpu_clock, inc_clk, sample_clk);
-      v += this.gen_pulse(this.pulse2, cpu_clock, inc_clk, sample_clk);
-      v += this.gen_triangle(cpu_clock, inc_clk, sample_clk);
-      v += this.gen_noise(cpu_clock, inc_clk, sample_clk);
-      v += this.dmc_produce(sample_clk);
+      v += this.gen_pulse(this.pulse1, clock_per_sample, clock_per_freq);
+      v += this.gen_pulse(this.pulse2, clock_per_sample, clock_per_freq);
+      v += this.gen_triangle(clock_per_sample, clock_per_freq);
+      v += this.gen_noise(clock_per_sample, clock_per_freq);
+      v += this.dmc_produce(clock_per_freq);
 
       if(sndi.bps == 16)
         sndi.buf[i] = util.get_min(32767.0, util.get_max(-32767.0, sndi.buf[i]+(v*8000)));
@@ -632,7 +609,7 @@ export class APU {
         sndi.buf[i] += util.to_u8(v * 30);
     }
 
-    this.bef_clock = cur_clock;
+    this.pre_clock = cur_clock;
   }
 
   debug_out(sound) {
@@ -647,124 +624,112 @@ export class APU {
 
 class Pulse {
   constructor() {
-    this.enable = false;
+    this.enable = 0;
 
-    this.wave_length = 0;
-    this.length_enable = false;
-    this.length = 0;
-    this.length_clk = 0;
+    this.timer_period = 0;
+    this.length_counter_enable = 0;
+    this.length_counter = 0;
+    this.length_clock = 0;
 
-    this.volume = 0;
+    this.envelope_volume = 0;
     this.envelop_rate = 0;
-    this.envelope_enable = false;
-    this.envelope_clk = 0;
+    this.envelope_enable = 0;
+    this.envelope_clock = 0;
 
-    this.sweep_enable = false;
-    this.sweep_rate = 0;
-    this.sweep_mode = false;
+    this.sweep_enable = 0;
+    this.sweep_period = 0;
+    this.sweep_negate = 0;
     this.sweep_shift = 0;
-    this.sweep_clk = 0;
-    this.sweep_pausing = false;
+    this.sweep_clock = 0;
+    this.sweep_pausing = 0;
 
-    this.duty = 0;
+    this.duty_cycle = 0;
 
-    this.linear_latch = 0;
     this.linear_counter = 0;
-    this.holdnote = false;
-    this.counter_start = 0;
-    this.linear_clk = 0;
+    this.counter_reload_value = 0;
+    this.counter_reload_flag = 0;
+    this.linear_clock = 0;
 
-    this.random_type = false;
     this.step = 0;
-    this.step_clk = 0;
+    this.step_clock = 0;
   }
 }
 
 class Triangle {
   constructor() {
-    this.enable = false;
+    this.enable = 0;
 
-    this.wave_length = 0;
-    this.length_enable = false;
-    this.length = 0;
-    this.length_clk = 0;
+    this.timer_period = 0;
+    this.length_counter_enable = 0;
+    this.length_counter = 0;
+    this.length_clock = 0;
 
-    this.volume = 0;
-    this.envelop_rate = 0;
-    this.envelope_enable = false;
-    this.envelope_clk = 0;
-
-    this.sweep_enable = false;
-    this.sweep_rate = 0;
-    this.sweep_mode = false;
+    this.sweep_enable = 0;
+    this.sweep_period = 0;
+    this.sweep_negate = 0;
     this.sweep_shift = 0;
-    this.sweep_clk = 0;
-    this.sweep_pausing = false;
+    this.sweep_clock = 0;
+    this.sweep_pausing = 0;
 
-    this.duty = 0;
+    this.duty_cycle = 0;
 
-    this.linear_latch = 0;
     this.linear_counter = 0;
-    this.holdnote = false;
-    this.counter_start = 0;
-    this.linear_clk = 0;
+    this.counter_reload_value = 0;
+    this.counter_reload_flag = 0;
+    this.linear_clock = 0;
 
-    this.random_type = false;
     this.step = 0;
-    this.step_clk = 0;
+    this.step_clock = 0;
   }
 }
 
 class Noise {
   constructor() {
-    this.enable = false;
+    this.enable = 0;
 
-    this.wave_length = 0;
-    this.length_enable = false;
-    this.length = 0;
-    this.length_clk = 0;
+    this.timer_period = 0;
+    this.length_counter_enable = 0;
+    this.length_counter = 0;
+    this.length_clock = 0;
 
-    this.volume = 0;
+    this.envelope_volume = 0;
     this.envelop_rate = 0;
-    this.envelope_enable = false;
-    this.envelope_clk = 0;
+    this.envelope_enable = 0;
+    this.envelope_clock = 0;
 
-    this.sweep_enable = false;
-    this.sweep_rate = 0;
-    this.sweep_mode = false;
+    this.sweep_enable = 0;
+    this.sweep_period = 0;
+    this.sweep_negate = 0;
     this.sweep_shift = 0;
-    this.sweep_clk = 0;
-    this.sweep_pausing = false;
+    this.sweep_clock = 0;
+    this.sweep_pausing = 0;
 
-    this.duty = 0;
-
-    this.linear_latch = 0;
     this.linear_counter = 0;
-    this.holdnote = false;
-    this.counter_start = 0;
-    this.linear_clk = 0;
+    this.counter_reload_value = 0;
+    this.counter_reload_flag = 0;
+    this.linear_clock = 0;
 
-    this.random_type = false;
+    this.mode = 0;
     this.step = 0;
-    this.step_clk = 0;
+    this.step_clock = 0;
     this.shift_register = 0;
   }
 }
 
 class DMC {
   constructor() {
-    this.enable = false;
-    this.irq = false;
+    this.enable = 0;
+    this.irq = 0;
 
-    this.playback_mode = 0;
-    this.wave_length = 0;
-    this.clk = 0;
+    this.loop = 0;
+    this.timer_period = 0;
+    this.clock = 0;
 
     this.counter = 0;
-    this.length = 0;
-    this.length_latch = 0;
+    this.length_counter = 0;
+    this.sample_length = 0;
     this.addr = 0;
-    this.addr_latch = 0;
+    this.sample_addr = 0;
     this.shift_reg = 0;
     this.shift_count = 0;
     this.dac_lsb = 0;
