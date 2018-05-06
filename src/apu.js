@@ -328,7 +328,7 @@ export class APU {
 
     // Envelope
     if(pulse.envelope_enable) {
-      var decay_clk = this.cpu_clock / (240.0 / (pulse.envelope_period+1));
+      var decay_clk = (this.clock_per_frame / 4.0) * (pulse.envelope_period + 1);
       pulse.envelope_clock += clock_per_sample;
       while(pulse.envelope_clock > decay_clk) {
         pulse.envelope_clock -= decay_clk;
@@ -346,7 +346,7 @@ export class APU {
 
     // Sweep
     if(pulse.sweep_enable && !pulse.sweep_pausing) {
-      var sweep_clock = this.cpu_clock / (120.0 / (pulse.sweep_period+1));
+      var sweep_clock = (this.clock_per_frame / 2.0) * (pulse.sweep_period + 1);
       pulse.sweep_clock += clock_per_sample;
       while(pulse.sweep_clock > sweep_clock) {
         pulse.sweep_clock -= sweep_clock;
@@ -380,16 +380,15 @@ export class APU {
   }
 
   pulse_produce(pulse, clock_per_freq) {
-    //util.log(this.nes, "pulse_produce");
-
     pulse.step_clock += clock_per_freq;
-    var ret = 0.5-this.duty_table[pulse.duty_cycle][pulse.step];
+    var ret = 0.5 - this.duty_table[pulse.duty_cycle][pulse.step];
     var term = pulse.timer_period + 1;
 
     if(pulse.step_clock >= term) {
       var t = util.to_s32(pulse.step_clock / term);
       pulse.step_clock -= term * t;
       pulse.step = (pulse.step + t) % 16;
+      // util.log(this.nes, "step:" + pulse.step + ", step_clock:" + pulse.step_clock + ", term:" + term + ", t:" + t);
     }
 
     return ret;
@@ -418,7 +417,7 @@ export class APU {
     if(this.triangle.counter_reload_flag) {
       this.triangle.linear_counter = this.triangle.counter_reload_value;
     } else {
-      var linear_clock = this.cpu_clock / 240.0;
+      var linear_clock = this.clock_per_frame / 4.0;
       this.triangle.linear_clock += clock_per_sample;
       while(this.triangle.linear_clock > linear_clock) {
         this.triangle.linear_clock -= linear_clock;
@@ -427,13 +426,13 @@ export class APU {
       }
     }
 
-    if(!this.triangle.length_counter_enable && this.triangle.linear_counter)
+    //if(!this.triangle.length_counter_enable && this.triangle.linear_counter)
+    if(!this.triangle.length_counter_enable)
       this.triangle.counter_reload_flag = 0;
 
-    if(this.triangle.linear_counter == 0)
+    if(!this.triangle.linear_counter)
       pause = 1;
 
-    pause |= this.triangle.sweep_pausing;
     pause |= this.triangle.timer_period == 0;
 
     var t = 0;
@@ -447,8 +446,6 @@ export class APU {
   }
 
   tri_produce(clock_per_freq) {
-    //util.log(this.nes, "tri_produce");
-
     this.triangle.step_clock += clock_per_freq;
     var ret = (this.triangle_table[this.triangle.step] / 16.0) - 0.5;
     var term = this.triangle.timer_period + 1;
@@ -483,7 +480,7 @@ export class APU {
 
     // Envelope
     if(this.noise.envelope_enable) {
-      var decay_clk = this.cpu_clock / (240.0 / (this.noise.envelope_period+1));
+      var decay_clk = (this.clock_per_frame / 4.0) * (this.noise.envelope_period + 1);
       this.noise.envelope_clock += clock_per_sample;
       while(this.noise.envelope_clock > decay_clk) {
         this.noise.envelope_clock -= decay_clk;
@@ -499,7 +496,6 @@ export class APU {
     }
     vol = this.noise.envelope_volume;
 
-    pause |= this.noise.sweep_pausing;
     pause |= this.noise.timer_period == 0;
 
     var t = 0;
@@ -522,10 +518,16 @@ export class APU {
     while(this.noise.step_clock >= term) {
       this.noise.step_clock -= term;
       var t = util.to_s32(this.noise.shift_register);
-      if(this.noise.mode)
+      var shift;
+      if(this.noise.mode) {
         this.noise.shift_register= ((t<<1) | (((t>>14) ^ (t>>8)) & 1)) & 0x7fff;
-      else
+        //shift = 6;
+      } else {
         this.noise.shift_register= ((t<<1) | (((t>>14) ^ (t>>13)) & 1)) & 0x7fff;
+        //shift = 1;
+      }
+
+      //this.noise.shift_register = ((t>>1) | (((t&1) ^ (t>>shift)) & 1)) & 0x7fff;
     }
 
     return ret;
@@ -534,9 +536,10 @@ export class APU {
   dmc_produce(clock_per_freq) {
     //util.log(this.nes, "dmc_produce");
 
-    if(!this.dmc.enable)
-      return (((this.dmc.counter<<1) | this.dmc.dac_lsb) / 32.0);
-      //return ((((this.dmc.counter<<1) | this.dmc.dac_lsb) - 64) / 32.0);
+    if(!this.dmc.enable) {
+      //return (((this.dmc.counter<<1) | this.dmc.dac_lsb) / 32.0);
+      return ((((this.dmc.counter<<1) | this.dmc.dac_lsb) - 64) / 32.0);
+    }
 
     this.dmc.clock += clock_per_freq;
     while(this.dmc.clock > this.dmc.timer_period) {
@@ -548,8 +551,8 @@ export class APU {
             this.dmc.length_counter = this.dmc.sample_length;
           } else {
             this.dmc.enable = 0;
-            //return ((((this.dmc.counter<<1) | this.dmc.dac_lsb) - 64) / 32.0);
-            return (((this.dmc.counter<<1) | this.dmc.dac_lsb) / 32.0);
+            return ((((this.dmc.counter<<1) | this.dmc.dac_lsb) - 64) / 32.0);
+            //return (((this.dmc.counter<<1) | this.dmc.dac_lsb) / 32.0);
           }
         }
 
@@ -574,8 +577,8 @@ export class APU {
       this.dmc.shift_reg >>= 1;
     }
 
-    //return ((((this.dmc.counter<<1) | this.dmc.dac_lsb) - 64) / 32.0);
-    return (((this.dmc.counter<<1) | this.dmc.dac_lsb) / 32.0);
+    return ((((this.dmc.counter<<1) | this.dmc.dac_lsb) - 64) / 32.0);
+    //return (((this.dmc.counter<<1) | this.dmc.dac_lsb) / 32.0);
   }
 
   gen_audio(sndi) {
@@ -583,7 +586,7 @@ export class APU {
     var clock_per_sample = (cur_clock - this.pre_clock) / sndi.sample;
     var clock_per_freq = this.cpu_clock / sndi.freq;
 
-    util.log(this.nes, "gen_audio:" + cur_clock.toString(10).padStart(10, " ") + ":" + this.pre_clock.toString(10).padStart(10, " ") + ":" + clock_per_sample.toString(10).padStart(20, " ") + ":" + clock_per_freq.toString(10).padStart(20, " "));
+    // util.log(this.nes, "gen_audio:" + cur_clock.toString(10).padStart(10, " ") + ":" + this.pre_clock.toString(10).padStart(10, " ") + ":" + clock_per_sample.toString(10).padStart(20, " ") + ":" + clock_per_freq.toString(10).padStart(20, " "));
 
     for(var i=0; i<(sndi.bps/8 * sndi.sample * sndi.ch); i++)
       sndi.buf[i] = 0;
@@ -615,8 +618,9 @@ export class APU {
   debug_out(sound) {
     var size = sound.bps/8 * sound.sample * sound.ch;
     var str = "sound size:" + size;
-    for(var i=0; i<size; i++)
+    for(var i=0; i<size; i++) {
       str += sound.buf[i] + ",";
+    }
     str += "\n";
     util.log(this.nes, str);
   }
@@ -641,7 +645,6 @@ class Pulse {
     this.sweep_negate = 0;
     this.sweep_shift = 0;
     this.sweep_clock = 0;
-    this.sweep_pausing = 0;
 
     this.duty_cycle = 0;
 
@@ -663,13 +666,6 @@ class Triangle {
     this.length_counter_enable = 0;
     this.length_counter = 0;
     this.length_clock = 0;
-
-    this.sweep_enable = 0;
-    this.sweep_period = 0;
-    this.sweep_negate = 0;
-    this.sweep_shift = 0;
-    this.sweep_clock = 0;
-    this.sweep_pausing = 0;
 
     this.duty_cycle = 0;
 
@@ -696,13 +692,6 @@ class Noise {
     this.envelop_rate = 0;
     this.envelope_enable = 0;
     this.envelope_clock = 0;
-
-    this.sweep_enable = 0;
-    this.sweep_period = 0;
-    this.sweep_negate = 0;
-    this.sweep_shift = 0;
-    this.sweep_clock = 0;
-    this.sweep_pausing = 0;
 
     this.linear_counter = 0;
     this.counter_reload_value = 0;

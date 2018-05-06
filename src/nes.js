@@ -24,6 +24,7 @@ export class NES {
         ['Comma', 'Period', 'ShiftLeft', 'ShiftRight',
          'KeyF', 'KeyV', 'KeyC', 'KeyB']
          );
+    this.sound_toggle = 1;
 
     this.rom = new Rom(this);
     this.mmc = new MMC(this);
@@ -69,9 +70,12 @@ export class NES {
     this.reg.clear_vblank();
     this.reg.copy_y();
 
-    this.apu.gen_audio(sound);
-    //this.apu.debug_out(sound);
-    this.output.gen_sound(sound);
+    util.log(this, "now_playing:" + this.output.now_playing);
+    if(!this.output.now_playing) {
+      this.apu.gen_audio(sound);
+      //this.apu.debug_out(sound);
+      this.output.gen_sound(sound);
+    }
 
     // Visible scanlines 0-239
     for(var i=0; i<240; i++) {

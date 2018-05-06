@@ -5,8 +5,9 @@ import * as util from './src/util.js'
 export function main(rom) {
   var canvas = document.getElementById('console');
   var output = new Output(canvas);
-
   var nes = new NES(output);
+  output.nes = nes;
+
   if(!nes.load(rom)) {
     console.log("invalid rom");
     return;
@@ -23,7 +24,7 @@ export function main(rom) {
   document.addEventListener('keydown', function(e) {
     nes.joypad0.key_status[e.code] = 1;
 
-    if(nes.debug)
+    //if(nes.debug)
       util.log(nes, "Input Keydown:" + e.code);
 
     if(e.code == "KeyQ")
@@ -49,13 +50,6 @@ export function main(rom) {
     var timer = setInterval(function() {
       nes.frame();
       cnt++;
-      /*
-      if(cnt == 31 || cnt == 32) {
-        nes.ppu.debug = true;
-      } else {
-        nes.ppu.debug = false;
-      }
-      */
 
       if(quit) {
         console.log("nes return");
