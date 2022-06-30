@@ -3,626 +3,538 @@ import * as util from './util.js'
 export class APU {
   constructor(nes) {
     this.nes = nes;
-    this.cpu_clock = this.nes.cpu.frequency;
-    this.clock_per_frame = this.cpu_clock / 60;
+    this.debug = false;
+    this.cpuClock = this.nes.cpu.frequency;
+    this.clockPerFrame = this.cpuClock / 60;
+
+    this.preClock = 0;
+
+    this.lengthCounterTable = [
+      10,254, 20,  2, 40,  4, 80,  6, 160,  8, 60, 10, 14, 12, 26, 14,
+      12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
+    ];
+
+    this.dutyTable = [
+      [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1],
+    ];
+
+    this.triangleTable = [
+      15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    ];
+
+    this.noiseTable = [
+      4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
+    ];
+
+    this.dmcTable = [
+      428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106,  84,  72,  54,
+    ];
+  }
+
+  reset() {
+    this.sampleQueue = new util.Queue();
 
     this.pulse1 = new Pulse();
     this.pulse2 = new Pulse();
     this.triangle = new Triangle();
     this.noise = new Noise();
     this.dmc = new DMC();
+    this.channels = [this.pulse1, this.pulse2, this.triangle, this.noise, this.dmc];
 
-    this.write_queue = new util.Queue();
-    this.pre_clock = 0;
-    this.bef_sync = 0;
+    this.syncPulse1 = new Pulse();
+    this.syncPulse2 = new Pulse();
+    this.syncTriangle = new Triangle();
+    this.syncNoise = new Noise();
+    this.syncDmc = new DMC();
+    this.syncChannels = [this.syncPulse1, this.syncPulse2, this.syncTriangle, this.syncNoise, this.syncDmc];
 
-    this.length_counter_table = [
-      10,254, 20,  2, 40,  4, 80,  6, 160,  8, 60, 10, 14, 12, 26, 14,
-      12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30,
-    ];
-
-    this.duty_table = [
-      [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-      [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-      [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1],
-      ];
-
-    /*
-    this.duty_table = [
-      [0, 1, 0, 0, 0, 0, 0, 0],
-      [0, 1, 1, 0, 0, 0, 0, 0],
-      [0, 1, 1, 1, 1, 0, 0, 0],
-      [1, 0, 0, 1, 1, 1, 1, 1],
-    ];
-    */
-
-    this.triangle_table = [
-      15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-    ];
-
-    this.noise_table = [
-      4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068,
-    ];
-
-    this.dmc_table = [
-      428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106,  84,  72,  54,
-    ];
-
-    this.frame_period = 0;
-    this.frame_irq = 0xff;
-  }
-
-  reset() {
-    this.noise.shift_register = 1;
-
-    this.pre_clock = 0;
-    this.bef_sync = 0;
-  }
-
-  sync() {
-    var cur = this.nes.cpu.master_clock();
-    var adv_clock = util.to_s32(cur) - this.bef_sync;
-
-    if(this.pulse1.enable && this.pulse1.length_counter_enable) {
-      this.pulse1.length_clock += adv_clock;
-      var dec = util.to_s32(this.pulse1.length_clock / this.clock_per_frame);
-      this.pulse1.length_clock -= this.clock_per_frame * dec;
-      this.pulse1.length_counter = util.get_max(0, this.pulse1.length_counter-dec);
-    }
-
-    if(this.pulse2.enable && this.pulse2.length_counter_enable) {
-      this.pulse2.length_clock += adv_clock;
-      var dec = util.to_s32(this.pulse2.length_clock / this.clock_per_frame);
-      this.pulse2.length_clock -= this.clock_per_frame * dec;
-      this.pulse2.length_counter = util.get_max(0, this.pulse2.length_counter-dec);
-    }
-
-    if(this.triangle.enable && this.triangle.length_counter_enable) {
-      this.triangle.length_clock += adv_clock;
-      var dec = util.to_s32(this.triangle.length_clock / this.clock_per_frame);
-      this.triangle.length_clock -= this.clock_per_frame * dec;
-      this.triangle.length_counter = util.get_max(0, this.triangle.length_counter-dec);
-    }
-
-    if(this.noise.enable && this.noise.length_counter_enable) {
-      this.noise.length_clock += adv_clock;
-      var dec = util.to_s32(this.noise.length_clock / this.clock_per_frame);
-      this.noise.length_clock -= this.clock_per_frame * dec;
-      this.noise.length_counter = util.get_max(0, this.noise.length_counter-dec);
-    }
-
-    if(this.dmc.enable) {
-      this.dmc.clock += adv_clock;
-      var dec = util.to_s32(this.dmc.clock / this.dmc.timer_period);
-      this.dmc.clock -= dec * this.dmc.timer_period;
-
-      var rest = util.to_s32(this.dmc.shift_count + (this.dmc.length_counter*8) - dec);
-      if(rest <= 0) {
-        if(this.dmc.loop) {
-          this.dmc.length_counter = rest / 8;
-          while(this.dmc.length_counter < 0)
-            this.dmc.length_counter += this.dmc.sample_length;
-          this.dmc.shift_count = 0;
-        } else {
-          this.dmc.enable = 0;
-        }
-      } else {
-        this.dmc.length_counter = rest / 8;
-        this.dmc.shift_count = rest % 8;
-      }
-    }
-
-    this.bef_sync = cur;
+    this.noise.shiftReg = 1;
+    this.preClock = 0;
+    this.frameIrq = 0xff;
   }
 
   read(addr) {
+    // ToDo: no use sync channel
     if(addr == 0x4015) {
-      this.sync();
-      var ret = this.pulse1.length_counter |
-        (this.pulse2.length_counter << 1) |
-        (this.triangle.length_counter << 2) |
-        (this.noise.length_counter << 3) |
-        (this.dmc.enable << 4) |
-        (this.dmc.irq << 7);
-      return util.to_u8(ret);
+      var ret = this.syncPulse1.lengthCounter |
+        (this.syncPulse2.lengthCounter << 1) |
+        (this.syncTriangle.lengthCounter << 2) |
+        (this.syncNoise.lengthCounter << 3) |
+        (this.syncDmc.enable << 4) |
+        (this.syncDmc.irq << 7);
+      return util.u8(ret);
     }
 
     return 0xA0;
   }
 
-  write(addr, dat) {
-    //util.log(this.nes, "apu write addr:" + util.to_hex(addr));
-
-    var wd = new Write_dat(this.nes.cpu.master_clock(), addr, dat);
-    this.write_queue.push(wd);
-    this._write(this.dmc, addr, dat);
+  write(addr, data) {
+    var s = new Sample(this.nes.cpu.masterClock(), addr, data);
+    this.sampleQueue.push(s);
   }
 
-  _write(dmc, addr, dat) {
+  realWrite(channels, addr, data) {
+    var pulse1 = channels[0];
+    var pulse2 = channels[1];
+    var triangle = channels[2];
+    var noise = channels[3];
+    var dmc = channels[4];
+
     switch(addr) {
     /* Pulse 1 */
     case 0x4000:
-      this.pulse1.envelope_enable = (dat>>4) & 1;
-      this.pulse1.envelope_volume = dat & 0xf;
-      this.pulse1.envelope_period = dat & 0xf;
-      this.pulse1.length_counter_enable = (dat>>5) & 1;
-      this.pulse1.duty_cycle = dat >> 6;
-      this.pulse1.envelope_clock = 0;
+      pulse1.envelopeEnable = Number(((data>>4) & 1) == 0);
+      if(pulse1.envelopeEnable) {
+        pulse1.envelopeVolume = 0xf;
+        pulse1.envelopePeriod = data & 0xf;
+      } else
+        pulse1.envelopeVolume = data & 0xf;
+      pulse1.lengthCounterEnable = Number(((data>>5) & 1) == 0);
+      pulse1.dutyCycle = data >> 6;
+      pulse1.envelopeClock = 0;
       break;
 
     case 0x4001:
-      this.pulse1.sweep_shift = dat & 7;
-      this.pulse1.sweep_negate = (dat>>3) & 1;
-      this.pulse1.sweep_period = (dat>>4) & 7;
-      this.pulse1.sweep_enable = (dat>>7) & 1;
-      this.pulse1.sweep_clock = 0;
-      this.pulse1.sweep_pausing = 0;
+      pulse1.sweepShift = data & 7;
+      pulse1.sweepNegate = (data>>3) & 1;
+      pulse1.sweepPeriod = (data>>4) & 7;
+      pulse1.sweepEnable = (data>>7) & 1;
+      pulse1.sweepClock = 0;
+      pulse1.sweepPausing = 0;
       break;
 
     case 0x4002:
-      this.pulse1.timer_period = (this.pulse1.timer_period&0xff00) | dat;
+      pulse1.timerPeriod = (pulse1.timerPeriod&~0xff) | data;
       break;
 
     case 0x4003:
-      this.pulse1.timer_period = (this.pulse1.timer_period&0x00ff) | ((dat&7) << 8);
-      this.pulse1.length_counter = this.length_counter_table[dat>>3];
+      pulse1.timerPeriod = (pulse1.timerPeriod&0xff) | ((data&0x7) << 8);
 
-      if(this.pulse1.envelope_enable) {
-        this.pulse1.envelope_volume = 0xf;
-        this.pulse1.envelope_clock = 0;
+      if(data & 0x8)
+        pulse1.lengthCounter = (data>>4)==0 ? 0x7f:(data>>4);
+      else
+        pulse1.lengthCounter = this.lengthCounterTable[data>>4];
+
+      if(pulse1.envelopeEnable) {
+        pulse1.envelopeVolume = 0xf;
+        pulse1.envelopeClock = 0;
       }
       break;
 
     /* Pulse 2 */
     case 0x4004:
-      this.pulse2.envelope_enable = (dat>>4) & 1;
-      this.pulse2.envelope_period = dat & 0xf;
-      this.pulse2.envelope_volume = dat & 0xf;
-      this.pulse2.length_counter_enable = (dat>>5) & 1;
-      this.pulse2.duty_cycle = dat >> 6;
-      this.pulse2.envelope_clock = 0;
+      pulse2.envelopeEnable = Number(((data>>4) & 1) == 0);
+      if(pulse2.envelopeEnable) {
+        pulse2.envelopeVolume = 0xf;
+        pulse2.envelopePeriod = data & 0xf;
+      } else
+        pulse2.envelopeVolume = data & 0xf;
+      pulse2.lengthCounterEnable = Number(((data>>5) & 1) == 0);
+      pulse2.dutyCycle = data >> 6;
+      pulse2.envelopeClock = 0;
       break;
 
     case 0x4005:
-      this.pulse2.sweep_shift = dat & 7;
-      this.pulse2.sweep_negate = (dat>>3) & 1;
-      this.pulse2.sweep_period = (dat>>4) & 7;
-      this.pulse2.sweep_enable = (dat>>7) & 1;
-      this.pulse2.sweep_clock = 0;
-      this.pulse2.sweep_pausing = 0;
+      pulse2.sweepShift = data & 7;
+      pulse2.sweepNegate = (data>>3) & 1;
+      pulse2.sweepPeriod = (data>>4) & 7;
+      pulse2.sweepEnable = (data>>7) & 1;
+      pulse2.sweepClock = 0;
+      pulse2.sweepPausing = 0;
       break;
 
     case 0x4006:
-      this.pulse2.timer_period = (this.pulse2.timer_period&~0xff) | dat;
+      pulse2.timerPeriod = (pulse2.timerPeriod&~0xff) | data;
       break;
 
     case 0x4007:
-      this.pulse2.timer_period = (this.pulse2.timer_period&0xff) | ((dat&0x7) << 8);
-      this.pulse2.length_counter = this.length_counter_table[dat>>3];
+      pulse2.timerPeriod = (pulse2.timerPeriod&0xff) | ((data&0x7) << 8);
 
-      if(this.pulse2.envelope_enable) {
-        this.pulse2.envelope_volume = 0xf;
-        this.pulse2.envelope_clock = 0;
+      if(data & 0x8)
+        pulse2.lengthCounter = (data>>4)==0 ? 0x7f:(data>>4);
+      else
+        pulse2.lengthCounter = this.lengthCounterTable[data>>4];
+
+      if(pulse2.envelopeEnable) {
+        pulse2.envelopeVolume = 0xf;
+        pulse2.envelopeClock = 0;
       }
       break;
 
     /* Triangle */
     case 0x4008:
-      this.triangle.length_counter_enable = (dat>>7) & 1;
-      this.triangle.counter_reload_value = dat & 0x7f;
+      triangle.linearCounterCtl = (data>>7) & 1;
+      triangle.counterReloadValue = data & 0x7f;
       break;
 
     case 0x4009:
       break;
 
     case 0x400A:
-      this.triangle.timer_period = (this.triangle.timer_period&~0xff) | dat;
+      triangle.timerPeriod = (triangle.timerPeriod&~0xff) | data;
       break;
 
     case 0x400B:
-      this.triangle.timer_period = (this.triangle.timer_period&0xff) | ((dat&0x7) << 8);
-      this.triangle.length_counter = this.length_counter_table[dat>>3];
-      this.triangle.counter_reload_flag = 1;
+      triangle.timerPeriod = (triangle.timerPeriod&0xff) | ((data&0x7) << 8);
+
+      if(data & 0x8)
+        triangle.lengthCounter = (data>>4)==0 ? 0x7f:(data>>4);
+      else
+        triangle.lengthCounter = this.lengthCounterTable[data>>4];
+
+      triangle.counterReloadFlag = 1;
       break;
 
     /* Noise */
     case 0x400C:
-      this.noise.envelope_enable = (dat>>4) & 1;
-      this.noise.envelope_period = dat & 0xf;
-      this.noise.envelope_volume = dat & 0xf;
-      this.noise.length_counter_enable = (dat>>5) & 1;
-      this.noise.envelope_clock = 0;
+      noise.envelopeEnable = Number(((data>>4) & 1) == 0);
+      if(noise.envelopeEnable) {
+        noise.envelopeVolume = 0xf;
+        noise.envelopePeriod = data & 0xf;
+      } else
+        noise.envelopeVolume = data & 0xf;
+      noise.lengthCounterEnable = Number(((data>>5) & 1) == 0);
+      noise.envelopeClock = 0;
       break;
 
     case 0x400D:
       break;
 
     case 0x400E:
-      this.noise.timer_period = this.noise_table[dat&0xf] - 1;
-      this.noise.mode = (dat>>7) & 1;
+      noise.timerPeriod = this.noiseTable[data&0xf] - 1;
+      noise.mode = (data>>7) & 1;
       break;
 
     case 0x400F:
-      this.noise.length_counter = this.length_counter_table[dat>>3];
+      if(data & 0x8)
+        noise.lengthCounter = (data>>4)==0 ? 0x7f:(data>>4);
+      else
+        noise.lengthCounter = this.lengthCounterTable[data>>4];
 
-      if(this.noise.envelope_enable) {
-        this.noise.envelope_volume = 0xf;
-        this.noise.envelope_clock = 0;
+      if(noise.envelopeEnable) {
+        noise.envelopeVolume = 0xf;
+        noise.envelopeClock = 0;
       }
       break;
 
     /* DMC */
     case 0x4010:
-      dmc.irq = !((dat>>7) & 1);
-      dmc.loop = (dat>>6) & 1;
-      dmc.timer_period = util.to_u32(this.dmc_table[dat&0xf] / 8);
+      dmc.loop = (data>>6) & 1;
+      dmc.timerPeriod = util.u32(this.dmcTable[data&0xf] / 8);
+      if(!((data>>7) & 1))
+        dmc.irq = 0;
       break;
 
     case 0x4011:
-      dmc.dac_lsb = dat & 1;
-      dmc.counter = (dat>>1) & 0x3f;
+      dmc.dacLsb = data & 1;
+      dmc.deltaCounter = (data>>1) & 0x3f;
       break;
 
     case 0x4012:
-      dmc.sample_addr = (dat<<6) + 0xc000;
+      dmc.sampleAddr = (data<<6) | 0xc000;
       break;
 
     case 0x4013:
-      dmc.sample_length = (dat<<4) + 1;
+      dmc.sampleLength = (data<<4) + 1;
       break;
 
     /* Enable channels */
     case 0x4015:
-      this.pulse1.enable = dat&1;
-      if(!this.pulse1.enable)
-        this.pulse1.length_counter = 0;
+      pulse1.enable = data&1;
+      if(!pulse1.enable)
+        pulse1.lengthCounter = 0;
 
-      this.pulse2.enable = (dat&2) >> 1;
-      if(!this.pulse2.enable)
-        this.pulse2.length_counter = 0;
+      pulse2.enable = (data>>1) & 1;
+      if(!pulse2.enable)
+        pulse2.lengthCounter = 0;
 
-      this.triangle.enable = (dat&4) >> 2;
-      if(!this.triangle.enable)
-        this.triangle.length_counter = 0;
+      triangle.enable = (data>>2) & 1;
+      if(!triangle.enable)
+        triangle.lengthCounter = 0;
 
-      this.noise.enable = (dat&8) >> 3;
-      if(!this.noise.enable)
-        this.noise.length_counter = 0;
+      noise.enable = (data>>3) & 1;
+      if(!noise.enable)
+        noise.lengthCounter = 0;
 
-      if(dat&0x10) {
+      if(data&0x10) {
         if(!dmc.enable) {
-          dmc.addr = dmc.sample_addr;
-          dmc.length_counter = dmc.sample_length;
-          dmc.shift_count = 0;
+          dmc.addr = dmc.sampleAddr;
+          dmc.lengthCounter = dmc.sampleLength;
+          dmc.shiftCounter = 0;
         }
         dmc.enable = 1;
       } else {
         dmc.enable = 0;
       }
-
       dmc.irq = 0;
       break;
     }
   }
 
-  gen_pulse(pulse, clock_per_sample, clock_per_freq) {
+  createPulse(pulse, clockPerSample, clockPerFreq) {
     var pause = 0;
     var vol = 16;
 
     if(!pulse.enable)
       return 0;
-    if(pulse.length_counter == 0)
+    if(pulse.lengthCounter == 0)
       pause = 1;
 
     // Length Counter
-    if(pulse.length_counter_enable) {
-      pulse.length_clock += clock_per_sample;
-      while(pulse.length_clock > this.clock_per_frame) {
-        pulse.length_clock -= this.clock_per_frame;
-        if(pulse.length_counter > 0)
-          pulse.length_counter--;
+    if(pulse.lengthCounterEnable) {
+      pulse.lengthClock = pulse.lengthClock + clockPerSample;
+      while(pulse.lengthClock > this.clockPerFrame) {
+        pulse.lengthClock = pulse.lengthClock - this.clockPerFrame;
+        if(pulse.lengthCounter > 0)
+          pulse.lengthCounter--;
       }
     }
 
     // Envelope
-    if(pulse.envelope_enable) {
-      var decay_clk = (this.clock_per_frame / 4.0) * (pulse.envelope_period + 1);
-      pulse.envelope_clock += clock_per_sample;
-      while(pulse.envelope_clock > decay_clk) {
-        pulse.envelope_clock -= decay_clk;
+    if(pulse.envelopeEnable) {
+      var decayClock = (this.clockPerFrame / 4.0) * (pulse.envelopePeriod + 1);
+      pulse.envelopeClock += clockPerSample;
+      while(pulse.envelopeClock > decayClock) {
+        pulse.envelopeClock -= decayClock;
 
-        if(pulse.envelope_volume > 0) {
-          pulse.envelope_volume--;
-        } else if(!pulse.length_counter_enable) {
-          pulse.envelope_volume = 0xf;
+        if(pulse.envelopeVolume > 0) {
+          pulse.envelopeVolume--;
+        } else if(!pulse.lengthCounterEnable) {
+          pulse.envelopeVolume = 0xf;
         } else {
-          pulse.envelope_volume = 0;
+          pulse.envelopeVolume = 0;
         }
       }
     }
-    vol = pulse.envelope_volume;
+    vol = pulse.envelopeVolume;
 
     // Sweep
-    if(pulse.sweep_enable && !pulse.sweep_pausing) {
-      var sweep_clock = (this.clock_per_frame / 2.0) * (pulse.sweep_period + 1);
-      pulse.sweep_clock += clock_per_sample;
-      while(pulse.sweep_clock > sweep_clock) {
-        pulse.sweep_clock -= sweep_clock;
-        if(pulse.sweep_shift && pulse.length_counter) {
-          if(!pulse.sweep_negate)
-            pulse.timer_period += pulse.timer_period >> pulse.sweep_shift;
+    if(pulse.sweepEnable && !pulse.sweepPausing) {
+      var sweepClock = (this.clockPerFrame / 2.0) * (pulse.sweepPeriod + 1);
+      pulse.sweepClock += clockPerSample;
+      while(pulse.sweepClock > sweepClock) {
+        pulse.sweepClock -= sweepClock;
+        if(pulse.sweepShift && pulse.lengthCounter) {
+          if(!pulse.sweepNegate)
+            pulse.timerPeriod += pulse.timerPeriod >> pulse.sweepShift;
           else
-            pulse.timer_period += ~(pulse.timer_period >> pulse.sweep_shift);
+            pulse.timerPeriod += ~(pulse.timerPeriod >> pulse.sweepShift);
 
-          if(pulse.timer_period < 0x008)
-            pulse.sweep_pausing = 1;
-          if(pulse.timer_period & ~0x7FF)
-            pulse.sweep_pausing = 1;
+          if(pulse.timerPeriod < 0x008)
+            pulse.sweepPausing = 1;
+          if(pulse.timerPeriod & ~0x7FF)
+            pulse.sweepPausing = 1;
 
-          pulse.timer_period &= 0x7FF;
+          pulse.timerPeriod &= 0x7FF;
         }
       }
     }
 
-    pause |= pulse.sweep_pausing;
-    pause |= pulse.timer_period == 0;
+    pause |= pulse.sweepPausing;
+    pause |= Number(pulse.timerPeriod == 0);
+    if(pause)
+      return 0;
 
-    var t = 0;
-    var v = 0;
-    if(!pause) {
-      t = this.pulse_produce(pulse, clock_per_freq);
-      v = t * vol / 16;
-    }
+    pulse.stepClock += clockPerFreq;
+    var v = 0.5 - this.dutyTable[pulse.dutyCycle][pulse.step];
+    v *= vol / 16;
 
-    return v;
-  }
-
-  pulse_produce(pulse, clock_per_freq) {
-    pulse.step_clock += clock_per_freq;
-    var ret = 0.5 - this.duty_table[pulse.duty_cycle][pulse.step];
-    var term = pulse.timer_period + 1;
-
-    if(pulse.step_clock >= term) {
-      var t = util.to_s32(pulse.step_clock / term);
-      pulse.step_clock -= term * t;
+    var term = pulse.timerPeriod + 1;
+    if(pulse.stepClock >= term) {
+      var t = util.s32(pulse.stepClock / term);
+      pulse.stepClock -= term * t;
+      pulse.stepClock = pulse.stepClock;
       pulse.step = (pulse.step + t) % 16;
-      // util.log(this.nes, "step:" + pulse.step + ", step_clock:" + pulse.step_clock + ", term:" + term + ", t:" + t);
-    }
-
-    return ret;
-  }
-
-  gen_triangle(clock_per_sample, clock_per_freq) {
-    var pause = 0;
-    var vol = 16;
-
-    if(!this.triangle.enable)
-      return 0;
-    if(this.triangle.length_counter == 0)
-      pause = 1;
-
-    // Length Counter
-    if(this.triangle.length_counter_enable) {
-      this.triangle.length_clock += clock_per_sample;
-      while(this.triangle.length_clock > this.clock_per_frame) {
-        this.triangle.length_clock -= this.clock_per_frame;
-        if(this.triangle.length_counter > 0)
-          this.triangle.length_counter--;
-      }
-    }
-
-    // Linear Counter
-    if(this.triangle.counter_reload_flag) {
-      this.triangle.linear_counter = this.triangle.counter_reload_value;
-    } else {
-      var linear_clock = this.clock_per_frame / 4.0;
-      this.triangle.linear_clock += clock_per_sample;
-      while(this.triangle.linear_clock > linear_clock) {
-        this.triangle.linear_clock -= linear_clock;
-        if(this.triangle.linear_counter > 0)
-          this.triangle.linear_counter--;
-      }
-    }
-
-    //if(!this.triangle.length_counter_enable && this.triangle.linear_counter)
-    if(!this.triangle.length_counter_enable)
-      this.triangle.counter_reload_flag = 0;
-
-    if(!this.triangle.linear_counter)
-      pause = 1;
-
-    pause |= this.triangle.timer_period == 0;
-
-    var t = 0;
-    var v = 0;
-    if(!pause) {
-      t = this.tri_produce(clock_per_freq);
-      v = t * vol / 16;
     }
 
     return v;
   }
 
-  tri_produce(clock_per_freq) {
-    this.triangle.step_clock += clock_per_freq;
-    var ret = (this.triangle_table[this.triangle.step] / 16.0) - 0.5;
-    var term = this.triangle.timer_period + 1;
+  createTriangle(triangle, clockPerSample, clockPerFreq) {
+    var pause = 0;
 
-    if(this.triangle.step_clock >= term) {
-      var t = util.to_s32(this.triangle.step_clock / term);
-      this.triangle.step_clock -= term * t;
-      this.triangle.step = (this.triangle.step + t) % 32;
+    if(!triangle.enable)
+      return 0;
+    if(triangle.lengthCounter == 0)
+      pause = 1;
+
+    // length Counter
+    if(triangle.lengthCounterEnable) {
+      triangle.lengthClock = triangle.lengthClock + clockPerSample;
+      while(triangle.lengthClock > this.clockPerFrame) {
+        triangle.lengthClock = triangle.lengthClock - this.clockPerFrame;
+        if(triangle.lengthCounter > 0)
+          triangle.lengthCounter--;
+      }
     }
 
-    return ret;
+    // linear counter
+    if(triangle.counterReloadFlag)
+      triangle.linearCounter = triangle.counterReloadValue;
+    else {
+      var linearClock = this.clockPerFrame / 4.0;
+      triangle.linearClock = triangle.linearClock + clockPerSample;
+      while(triangle.linearClock > linearClock) {
+        triangle.linearClock -= linearClock;
+        if(triangle.linearCounter > 0)
+          triangle.linearCounter--;
+      }
+    }
+
+    if(!triangle.linearCounterCtl && triangle.linearCounter != 0)
+      triangle.counterReloadFlag = 0;
+
+    if(triangle.linearCounter == 0)
+      pause = 1;
+
+    pause |= Number(triangle.timerPeriod == 0);
+    if(pause)
+      return 0;
+
+    triangle.stepClock += clockPerFreq;
+    var v = this.triangleTable[triangle.step]/16.0 - 0.5;
+
+    var term = triangle.timerPeriod + 1;
+    if(triangle.stepClock >= term) {
+      var t = util.s32(triangle.stepClock / term);
+      triangle.stepClock -= term * t;
+      triangle.stepClock = triangle.stepClock;
+      triangle.step = (triangle.step + t) % 32;
+    }
+
+    return v;
   }
 
-  gen_noise(clock_per_sample, clock_per_freq) {
+  createNoise(noise, clockPerSample, clockPerFreq) {
     var pause = 0;
     var vol = 16;
 
-    if(!this.noise.enable)
+    if(!noise.enable)
       return 0;
-    if(this.noise.length_counter == 0)
+    if(noise.lengthCounter == 0)
       pause = 1;
 
     // Length Counter
-    if(this.noise.length_counter_enable) {
-      this.noise.length_clock += clock_per_sample;
-      while(this.noise.length_clock > this.clock_per_frame) {
-        this.noise.length_clock -= this.clock_per_frame;
-        if(this.noise.length_counter > 0)
-          this.noise.length_counter--;
+    if(noise.lengthCounterEnable) {
+      noise.lengthClock = noise.lengthClock + clockPerSample;
+      while(noise.lengthClock > this.clockPerFrame) {
+        noise.lengthClock = noise.lengthClock - this.clockPerFrame;
+        if(noise.lengthCounter > 0)
+          noise.lengthCounter--;
       }
     }
 
     // Envelope
-    if(this.noise.envelope_enable) {
-      var decay_clk = (this.clock_per_frame / 4.0) * (this.noise.envelope_period + 1);
-      this.noise.envelope_clock += clock_per_sample;
-      while(this.noise.envelope_clock > decay_clk) {
-        this.noise.envelope_clock -= decay_clk;
+    if(noise.envelopeEnable) {
+      var decayClock = (this.clockPerFrame / 4.0) * (noise.envelopePeriod + 1);
+      noise.envelopeClock += clockPerSample;
+      while(noise.envelopeClock > decayClock) {
+        noise.envelopeClock -= decayClock;
 
-        if(this.noise.envelope_volume > 0) {
-          this.noise.envelope_volume--;
-        } else if(!this.noise.length_counter_enable) {
-          this.noise.envelope_volume = 0xf;
+        if(noise.envelopeVolume > 0) {
+          noise.envelopeVolume--;
+        } else if(!noise.lengthCounterEnable) {
+          noise.envelopeVolume = 0xf;
         } else {
-          this.noise.envelope_volume = 0;
+          noise.envelopeVolume = 0;
         }
       }
     }
-    vol = this.noise.envelope_volume;
+    vol = noise.envelopeVolume;
 
-    pause |= this.noise.timer_period == 0;
+    pause |= Number(noise.timerPeriod == 0);
+    if(pause)
+      return 0;
+    
+    noise.stepClock += clockPerFreq;
+    var v = 0.5 - (noise.shiftReg >> 14);
+    v *= vol / 16;
 
-    var t = 0;
-    var v = 0;
-    if(!pause) {
-      t = this.noi_produce(clock_per_freq);
-      v = t * vol / 16;
+    var term = noise.timerPeriod + 1;
+    while(noise.stepClock >= term) {
+      noise.stepClock -= term;
+      noise.stepClock = noise.stepClock;
+      var t = noise.shiftReg;
+      if(noise.mode)
+        noise.shiftReg = ((t<<1)|(((t>>14)^(t>>8))&1))&0x7fff;
+      else
+        noise.shiftReg = ((t<<1)|(((t>>14)^(t>>13))&1))&0x7fff;
     }
-
     return v;
   }
 
-  noi_produce(clock_per_freq) {
-    //util.log(this.nes, "noi_produce");
+  createDmc(dmc, clockPerFreq) {
+    if(!dmc.enable)
+      return ((dmc.deltaCounter<<1) + dmc.dacLsb) / 32;
 
-    this.noise.step_clock += clock_per_freq;
-    var ret = 0.5 - (this.noise.shift_register >> 14);
-    var term = this.noise.timer_period + 1;
-
-    while(this.noise.step_clock >= term) {
-      this.noise.step_clock -= term;
-      var t = util.to_s32(this.noise.shift_register);
-      var shift;
-      if(this.noise.mode) {
-        this.noise.shift_register= ((t<<1) | (((t>>14) ^ (t>>8)) & 1)) & 0x7fff;
-        //shift = 6;
-      } else {
-        this.noise.shift_register= ((t<<1) | (((t>>14) ^ (t>>13)) & 1)) & 0x7fff;
-        //shift = 1;
-      }
-
-      //this.noise.shift_register = ((t>>1) | (((t&1) ^ (t>>shift)) & 1)) & 0x7fff;
-    }
-
-    return ret;
-  }
-
-  dmc_produce(clock_per_freq) {
-    //util.log(this.nes, "dmc_produce");
-
-    if(!this.dmc.enable) {
-      //return (((this.dmc.counter<<1) | this.dmc.dac_lsb) / 32.0);
-      return ((((this.dmc.counter<<1) | this.dmc.dac_lsb) - 64) / 32.0);
-    }
-
-    this.dmc.clock += clock_per_freq;
-    while(this.dmc.clock > this.dmc.timer_period) {
-      this.dmc.clock -= this.dmc.timer_period;
-      if(this.dmc.shift_count == 0) {
-        if(this.dmc.length_counter == 0) {
-          if(this.dmc.loop) {
-            this.dmc.addr = this.dmc.sample_addr;
-            this.dmc.length_counter = this.dmc.sample_length;
+    dmc.clock += clockPerFreq;
+    while(dmc.clock > dmc.timerPeriod) {
+      dmc.clock -= dmc.timerPeriod;
+      if(!dmc.shiftCounter) {
+        if(dmc.lengthCounter == 0) {
+          if(dmc.loop&1) {
+            dmc.addr = dmc.sampleAddr;
+            dmc.lengthCounter = dmc.sampleLength;
           } else {
-            this.dmc.enable = 0;
-            return ((((this.dmc.counter<<1) | this.dmc.dac_lsb) - 64) / 32.0);
-            //return (((this.dmc.counter<<1) | this.dmc.dac_lsb) / 32.0);
+            dmc.enable = 0;
+            if(dmc.loop == 2) {
+              dmc.irq = false;
+            }
+            return ((dmc.deltaCounter<<1) + dmc.dacLsb) / 32;
           }
         }
 
-        this.dmc.shift_count = 8;
-        this.dmc.shift_reg = this.nes.mmc.read(this.dmc.addr);
-
-        if(this.dmc.addr == 0xFFFF)
-          this.dmc.addr = 0x8000;
+        dmc.shiftCounter = 8;
+        dmc.shiftReg = this.nes.mbc.read(dmc.addr);
+        if(dmc.addr = 0xffff)
+          dmc.addr = 0x8000;
         else
-          this.dmc.addr += 1;
-        this.dmc.length_counter--;
+          dmc.addr++;
+        dmc.lengthCounter--;
       }
 
-      var b = this.dmc.shift_reg & 1;
-      if(b == 0 && this.dmc.counter)
-        this.dmc.counter--;
-      if(b == 1 && this.dmc.counter != 0x3F)
-        this.dmc.counter++;
-
-      this.dmc.counter &= 0x3F;
-      this.dmc.shift_count--;
-      this.dmc.shift_reg >>= 1;
+      if(dmc.shiftReg & 1) {
+        if(dmc.deltaCounter < 0x3f)
+          dmc.deltaCounter++;
+      } else {
+        if(dmc.deltaCounter > 0)
+          dmc.deltaCounter--;
+      }
+      dmc.deltaCounter &= 0x3f;
+      dmc.shiftCounter--;
+      dmc.shiftReg >>= 1;
     }
 
-    return ((((this.dmc.counter<<1) | this.dmc.dac_lsb) - 64) / 32.0);
-    //return (((this.dmc.counter<<1) | this.dmc.dac_lsb) / 32.0);
+    return ((dmc.deltaCounter<<1) + dmc.dacLsb) / 32;
   }
 
-  gen_audio(sndi) {
-    var cur_clock = this.nes.cpu.master_clock();
-    var clock_per_sample = (cur_clock - this.pre_clock) / sndi.sample;
-    var clock_per_freq = this.cpu_clock / sndi.freq;
+  createSound(sound) {
+    var curClock = this.nes.cpu.masterClock();
+    var clockPerSample = (curClock - this.preClock) / sound.sample;
+    var clockPerFreq = this.cpuClock / sound.freq;
 
-    // util.log(this.nes, "gen_audio:" + cur_clock.toString(10).padStart(10, " ") + ":" + this.pre_clock.toString(10).padStart(10, " ") + ":" + clock_per_sample.toString(10).padStart(20, " ") + ":" + clock_per_freq.toString(10).padStart(20, " "));
+    for(var i=0; i<sound.sample; i++) {
+      var samplePos = (curClock - this.preClock) * i / sound.sample + this.preClock;
 
-    for(var i=0; i<(sndi.bps/8 * sndi.sample * sndi.ch); i++)
-      sndi.buf[i] = 0;
-
-    for(i=0; i<sndi.sample; i++) {
-      var pos = (clock_per_sample * i) + this.pre_clock;
-      while(!this.write_queue.empty() && this.write_queue.front().clk <= pos) {
-        var w = this.write_queue.front();
-        this.write_queue.pop();
-        this._write(this.dmc, w.addr, w.dat);
+      while(!this.sampleQueue.empty() && this.sampleQueue.front().clock <= samplePos) {
+        var s = this.sampleQueue.pop();
+        this.realWrite(this.channels, s.addr, s.data);
       }
 
       var v = 0;
-      v += this.gen_pulse(this.pulse1, clock_per_sample, clock_per_freq);
-      v += this.gen_pulse(this.pulse2, clock_per_sample, clock_per_freq);
-      v += this.gen_triangle(clock_per_sample, clock_per_freq);
-      v += this.gen_noise(clock_per_sample, clock_per_freq);
-      v += this.dmc_produce(clock_per_freq);
-
-      if(sndi.bps == 16)
-        sndi.buf[i] = util.get_min(32767.0, util.get_max(-32767.0, sndi.buf[i]+(v*8000)));
-      else if(sndi.bps == 8)
-        sndi.buf[i] += util.to_u8(v * 30);
+      v += this.createPulse(this.pulse1, clockPerSample, clockPerFreq);
+      v += this.createPulse(this.pulse2, clockPerSample, clockPerFreq);
+      v += this.createNoise(this.noise, clockPerSample, clockPerFreq);
+      v += this.createTriangle(this.triangle, clockPerSample, clockPerFreq);
+      v += this.createDmc(this.dmc, clockPerFreq);
+      sound.buf[i] = v / 5.0;
     }
 
-    this.pre_clock = cur_clock;
-  }
-
-  debug_out(sound) {
-    var size = sound.bps/8 * sound.sample * sound.ch;
-    var str = "sound size:" + size;
-    for(var i=0; i<size; i++) {
-      str += sound.buf[i] + ",";
-    }
-    str += "\n";
-    util.log(this.nes, str);
+    this.preClock = curClock;
   }
 }
 
@@ -630,31 +542,27 @@ class Pulse {
   constructor() {
     this.enable = 0;
 
-    this.timer_period = 0;
-    this.length_counter_enable = 0;
-    this.length_counter = 0;
-    this.length_clock = 0;
+    this.timerPeriod = 0;
+    this.lengthCounterEnable = 0;
+    this.lengthCounter = 0;
+    this.lengthClock = 0;
 
-    this.envelope_volume = 0;
-    this.envelop_rate = 0;
-    this.envelope_enable = 0;
-    this.envelope_clock = 0;
+    this.envelopeVolume = 0;
+    this.envelopePeriod = 0;
+    this.envelopeEnable = 0;
+    this.envelopeClock = 0;
 
-    this.sweep_enable = 0;
-    this.sweep_period = 0;
-    this.sweep_negate = 0;
-    this.sweep_shift = 0;
-    this.sweep_clock = 0;
+    this.sweepEnable = 0;
+    this.sweepPeriod = 0;
+    this.sweepNegate = 0;
+    this.sweepShift = 0;
+    this.sweepClock = 0;
+    this.sweepPausing = 0;
 
-    this.duty_cycle = 0;
-
-    this.linear_counter = 0;
-    this.counter_reload_value = 0;
-    this.counter_reload_flag = 0;
-    this.linear_clock = 0;
+    this.dutyCycle = 0;
 
     this.step = 0;
-    this.step_clock = 0;
+    this.stepClock = 0;
   }
 }
 
@@ -662,20 +570,21 @@ class Triangle {
   constructor() {
     this.enable = 0;
 
-    this.timer_period = 0;
-    this.length_counter_enable = 0;
-    this.length_counter = 0;
-    this.length_clock = 0;
+    this.timerPeriod = 0;
+    this.lengthCounterEnable = 0;
+    this.lengthCounter = 0;
+    this.lengthClock = 0;
 
-    this.duty_cycle = 0;
+    this.dutyCycle = 0;
 
-    this.linear_counter = 0;
-    this.counter_reload_value = 0;
-    this.counter_reload_flag = 0;
-    this.linear_clock = 0;
+    this.linearCounter = 0;
+    this.linearCounterCtl = 0;
+    this.counterReloadValue = 0;
+    this.counterReloadFlag = 0;
+    this.linearClock = 0;
 
     this.step = 0;
-    this.step_clock = 0;
+    this.stepClock = 0;
   }
 }
 
@@ -683,25 +592,20 @@ class Noise {
   constructor() {
     this.enable = 0;
 
-    this.timer_period = 0;
-    this.length_counter_enable = 0;
-    this.length_counter = 0;
-    this.length_clock = 0;
+    this.timerPeriod = 0;
+    this.lengthCounterEnable = 0;
+    this.lengthCounter = 0;
+    this.lengthClock = 0;
 
-    this.envelope_volume = 0;
-    this.envelop_rate = 0;
-    this.envelope_enable = 0;
-    this.envelope_clock = 0;
-
-    this.linear_counter = 0;
-    this.counter_reload_value = 0;
-    this.counter_reload_flag = 0;
-    this.linear_clock = 0;
+    this.envelopeVolume = 0;
+    this.envelopePeriod = 0;
+    this.envelopeEnable = 0;
+    this.envelopeClock = 0;
 
     this.mode = 0;
     this.step = 0;
-    this.step_clock = 0;
-    this.shift_register = 0;
+    this.stepClock = 0;
+    this.shiftReg = 0;
   }
 }
 
@@ -711,25 +615,24 @@ class DMC {
     this.irq = 0;
 
     this.loop = 0;
-    this.timer_period = 0;
+    this.timerPeriod = 0;
     this.clock = 0;
 
-    this.counter = 0;
-    this.length_counter = 0;
-    this.sample_length = 0;
+    this.deltaCounter = 0;
+    this.lengthCounter = 0;
+    this.sampleLength = 0;
     this.addr = 0;
-    this.sample_addr = 0;
-    this.shift_reg = 0;
-    this.shift_count = 0;
-    this.dac_lsb = 0;
+    this.sampleAddr = 0;
+    this.shiftReg = 0;
+    this.shiftCounter = 0;
+    this.dacLsb = 0;
   }
 }
 
-class Write_dat {
-  constructor(clk, addr, dat) {
-    this.clk = clk;
+class Sample {
+  constructor(clock, addr, data) {
+    this.clock = clock;
     this.addr = addr;
-    this.dat = dat;
+    this.data = data;
   }
 }
-
