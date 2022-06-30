@@ -6,9 +6,9 @@ export class MMC {
     this.rom = nes.rom;
     this.sram = null;
 
-    this.prg_bank = new Array(4);
-    this.chr_bank = new Array(8);
-    this.sram_enable = false;
+    this.prgBank = new Array(4);
+    this.chrBank = new Array(8);
+    this.sramEnable = false;
     this.ram = new Array(0x800);
 
     console.log("constructor MMC", this.nes);
@@ -17,15 +17,15 @@ export class MMC {
   reset() {
     this.ram.fill(0);
     this.sram = this.nes.rom.sram;
-    this.sram_enable = true;
+    this.sramEnable = true;
   }
 
-  read_chr(addr) {
-    return this.nes.mapper.read_chr(addr);
+  readChr(addr) {
+    return this.nes.mapper.readChr(addr);
   }
 
-  write_chr(addr, data) {
-    this.nes.mapper.write_chr(addr, data);
+  writeChr(addr, data) {
+    this.nes.mapper.writeChr(addr, data);
   }
 
   read(addr) {
@@ -40,7 +40,7 @@ export class MMC {
       return 0;
 
     case addr < 0x8000: // SRAM: 0x6000 - 0x7FFF
-      if(this.sram_enable)
+      if(this.sramEnable)
         return this.sram[addr&0x1fff];
       return 0;
 
@@ -66,7 +66,7 @@ export class MMC {
       break;
 
     case addr < 0x8000: // SRAM: 0x6000 - 0x7FFF
-      if(this.sram_enable)
+      if(this.sramEnable)
         this.sram[addr&0x1fff] = data;
       else
         this.nes.mapper.write(addr, data);

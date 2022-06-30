@@ -7,20 +7,20 @@ export class PPU {
     this.mmc = nes.mmc;
     this.debug = false;
 
-    this.oamram = new Uint8Array(0x100);
-    this.name_tables = new Uint8Array(0x1000);
-    this.name_table = new Array(4);
+    this.oamRam = new Uint8Array(0x100);
+    this.nameTables = new Uint8Array(0x1000);
+    this.nameTable = new Array(4);
     for(var i=0; i<4; i++)
-      this.name_table[i] = (new Uint8Array(0x400)).fill(0);
+      this.nameTable[i] = (new Uint8Array(0x400)).fill(0);
     this.palette = new Uint8Array(0x20);
-    this.line_buf = new Uint8Array(0x100);
-    this.bg_rendered = new Array(0x100);
-    this.sprite_rendered = new Array(0x100);
+    this.lineBuf = new Uint8Array(0x100);
+    this.bgRendered = new Array(0x100);
+    this.spriteRendered = new Array(0x100);
 
-    this.MIRROR_TYPE = { HORIZONTAL:0, VERTICAL:1, FOUR_SCREEN:2, SINGLE_SCREEN0:3, SINGLE_SCREEN1:4 };
+    this.MIRROR_TYPE = { HORIZONTAL:0, VERTICAL:1, fourScreen:2, SINGLE_SCREEN0:3, SINGLE_SCREEN1:4 };
 
     /* Chris Covell */
-    this.palette_data = [
+    this.paletteData = [
       [0x80,0x80,0x80], [0x00,0x3D,0xA6], [0x00,0x12,0xB0], [0x44,0x00,0x96], 
       [0xA1,0x00,0x5E], [0xC7,0x00,0x28], [0xBA,0x06,0x00], [0x8C,0x17,0x00], 
       [0x5C,0x2F,0x00], [0x10,0x45,0x00], [0x05,0x4A,0x00], [0x00,0x47,0x2E], 
@@ -41,7 +41,7 @@ export class PPU {
 
     /* AspiringSquire */
     /*
-    this.palette_data = [
+    this.paletteData = [
       [0x6c,0x6c,0x6c], [0x00,0x26,0x8e], [0x00,0x00,0xa8], [0x40,0x00,0x94],
       [0x70,0x00,0x70], [0x78,0x00,0x40], [0x70,0x00,0x00], [0x62,0x16,0x00],
       [0xba,0xba,0xba], [0x20,0x5c,0xdc], [0x38,0x38,0xff], [0x80,0x20,0xf0],
@@ -63,7 +63,7 @@ export class PPU {
 
     /* Loopy */
     /*
-    this.palette_data = [
+    this.paletteData = [
       [0x75,0x75,0x75], [0x27,0x1B,0x8F], [0x00,0x00,0xAB], [0x47,0x00,0x9F],
       [0x8F,0x00,0x77], [0xAB,0x00,0x13], [0xA7,0x00,0x00], [0x7F,0x0B,0x00],
       [0x43,0x2F,0x00], [0x00,0x47,0x00], [0x00,0x51,0x00], [0x00,0x3F,0x17],
@@ -84,250 +84,232 @@ export class PPU {
     */
 
     for(var i=0; i<0x40; i++) {
-      this.palette_data[i].push(0xFF);
+      this.paletteData[i].push(0xFF);
     }
 
     console.log("constructor PPU", this);
   }
 
   reset() {
-    this.oamram.fill(0);
+    this.oamRam.fill(0);
     this.palette.fill(0);
 
-    if(this.rom.four_screen)
-      this.change_mirroring(this.MIRROR_TYPE.FOUR_SCREEN);
+    if(this.rom.fourScreen)
+      this.changeMirroring(this.MIRROR_TYPE.fourScreen);
     else if(this.rom.mirroring == this.MIRROR_TYPE.HORIZONTAL)
-      this.change_mirroring(this.MIRROR_TYPE.HORIZONTAL);
+      this.changeMirroring(this.MIRROR_TYPE.HORIZONTAL);
     else if(this.rom.mirroring == this.MIRROR_TYPE.VERTICAL)
-      this.change_mirroring(this.MIRROR_TYPE.VERTICAL);
+      this.changeMirroring(this.MIRROR_TYPE.VERTICAL);
   }
 
-  change_mirroring(type) {
-    this.name_tables = [].concat.apply([], [this.name_table[0], this.name_table[1], this.name_table[2], this.name_table[3]]);
+  changeMirroring(type) {
+    this.nameTables = [].concat.apply([], [this.nameTable[0], this.nameTable[1], this.nameTable[2], this.nameTable[3]]);
 
     switch(type) {
     case this.MIRROR_TYPE.HORIZONTAL:
-      this.name_table[0] = this.name_tables.slice(0, 0x400);
-      this.name_table[1] = this.name_table[0];
-      this.name_table[2] = this.name_tables.slice(0x400, 0x800);
-      this.name_table[3] = this.name_table[2];
+      this.nameTable[0] = this.nameTables.slice(0, 0x400);
+      this.nameTable[1] = this.nameTable[0];
+      this.nameTable[2] = this.nameTables.slice(0x400, 0x800);
+      this.nameTable[3] = this.nameTable[2];
       break;
     case this.MIRROR_TYPE.VERTICAL:
-      this.name_table[0] = this.name_tables.slice(0, 0x400);
-      this.name_table[1] = this.name_tables.slice(0x400, 0x800);
-      this.name_table[2] = this.name_table[0];
-      this.name_table[3] = this.name_table[1];
+      this.nameTable[0] = this.nameTables.slice(0, 0x400);
+      this.nameTable[1] = this.nameTables.slice(0x400, 0x800);
+      this.nameTable[2] = this.nameTable[0];
+      this.nameTable[3] = this.nameTable[1];
       break;
-    case this.MIRROR_TYPE.FOUR_SCREEN:
-      this.name_table[0] = this.name_tables.slice(0, 0x400);
-      this.name_table[1] = this.name_tables.slice(0x400, 0x800);
-      this.name_table[2] = this.name_tables.slice(0x800, 0xC00);
-      this.name_table[3] = this.name_tables.slice(0xC00, 0x1000);
+    case this.MIRROR_TYPE.fourScreen:
+      this.nameTable[0] = this.nameTables.slice(0, 0x400);
+      this.nameTable[1] = this.nameTables.slice(0x400, 0x800);
+      this.nameTable[2] = this.nameTables.slice(0x800, 0xC00);
+      this.nameTable[3] = this.nameTables.slice(0xC00, 0x1000);
       break;
     case this.MIRROR_TYPE.SINGLE_SCREEN0:
-      this.name_table[0] = this.name_tables.slice(0, 0x400);
-      this.name_table[1] = this.name_table[0];
-      this.name_table[2] = this.name_table[0];
-      this.name_table[3] = this.name_table[0];
+      this.nameTable[0] = this.nameTables.slice(0, 0x400);
+      this.nameTable[1] = this.nameTable[0];
+      this.nameTable[2] = this.nameTable[0];
+      this.nameTable[3] = this.nameTable[0];
       break;
     }
   }
 
   read(addr) {
-    return this.name_table[(addr>>10)&3][addr&0x3ff];
+    return this.nameTable[(addr>>10)&3][addr&0x3ff];
   }
 
   write(addr, data) {
-    //util.log(this.nes, "ppu write:" + util.to_hex(addr) + ":" + util.to_hex(data));
-    this.name_table[(addr>>10)&3][addr&0x3ff] = data;
+    this.nameTable[(addr>>10)&3][addr&0x3ff] = data;
   }
 
   rendering(line, screen) {
-    this.bg_rendered.fill(0);
-    this.sprite_rendered.fill(0);
+    this.bgRendered.fill(0);
+    this.spriteRendered.fill(0);
 
     for(var i=0; i<256; i++)
-      this.line_buf[i] = this.palette[0];
+      this.lineBuf[i] = this.palette[0];
 
-    if(this.nes.reg.bg_visibility)
-      this.bg_rendering(line);
+    if(this.nes.reg.bgVisibility)
+      this.bgRendering(line);
 
-    if(this.nes.reg.sprite_visibility)
-      this.sprite_rendering(line);
+    if(this.nes.reg.spriteVisibility)
+      this.spriteRendering(line);
 
     var pos = screen.width * line;
     for(var i=0; i<256; i++) {
-      screen.pixels[pos+i] = this.palette_data[this.line_buf[i]];
+      screen.pixels[pos+i] = this.paletteData[this.lineBuf[i]];
     }
 
     if(this.debug) {
-      var str = "ppu line_buf " + util.to_hex(line) + ":";
+      var str = "ppu lineBuf " + util.hex(line) + ":";
       for(var i=0; i<256; i++) {
         if(i%0x20 == 0)
           str += "\n";
-        str += util.to_hex(this.line_buf[i]) + ",";
+        str += util.hex(this.lineBuf[i]) + ",";
       }
       util.log(this.nes, str);
     }
   }
 
-  bg_rendering(line) {
-    var fineY = (this.nes.reg.ppu_v >> 12) & 7;
-    var pattern_addr = this.nes.reg.bg_pattern ? 0x1000:0x0000;
-    var x = this.nes.reg.ppu_x & 7;
+  bgRendering(line) {
+    var fineY = (this.nes.reg.regV >> 12) & 7;
+    var patternAddr = this.nes.reg.bgPattern ? 0x1000:0x0000;
+    var x = this.nes.reg.regX & 7;
     var inc = -x;
 
-    //var str = "tiles:";
     for(var i=0; i<33; i++, inc+=8) {
-      var v = this.nes.reg.ppu_v;
-      var tile_addr = 0x2000 | (v&0xfff);
-      var tile = this.read(tile_addr);;
+      var v = this.nes.reg.regV;
+      var tileAddr = 0x2000 | (v&0xfff);
+      var tile = this.read(tileAddr);;
 
-      var attr_addr = 0x23c0 | (v&0xc00) | ((v>>4)&0x38) | ((v>>2)&0x07);
+      var attrAddr = 0x23c0 | (v&0xc00) | ((v>>4)&0x38) | ((v>>2)&0x07);
       var shift = ((v>>4)&4) | (v&2);
-      var attr_byte = ((this.read(attr_addr)>>shift)&3)<<2;
+      var attrByte = ((this.read(attrAddr)>>shift)&3)<<2;
 
-      var low_tile = this.mmc.read_chr(pattern_addr+(tile*16)+fineY);
-      var high_tile = this.mmc.read_chr(pattern_addr+(tile*16)+fineY+8);
+      var lowTile = this.mmc.readChr(patternAddr+(tile*16)+fineY);
+      var highTile = this.mmc.readChr(patternAddr+(tile*16)+fineY+8);
 
-      //str += util.to_hex(low_tile) + "|" + util.to_hex(high_tile) + ",";
-      //for(var j=0; j<8; j++) {
       for(var j=7; j>=0; j--) {
         var pos = inc + j;
-        var tile_bit = ((low_tile&1) | (high_tile<<1)) & 3;
+        var tileBit = ((lowTile&1) | (highTile<<1)) & 3;
 
         if(pos >= 0 && pos < 0x100) {
-          if(tile_bit) {
-            this.line_buf[pos] = this.palette[tile_bit|attr_byte];
-            this.bg_rendered[pos] = 1;
+          if(tileBit) {
+            this.lineBuf[pos] = this.palette[tileBit|attrByte];
+            this.bgRendered[pos] = 1;
           }
         }
 
-        low_tile >>= 1;
-        high_tile >>= 1;
+        lowTile >>= 1;
+        highTile >>= 1;
       }
 
-      this.nes.reg.increment_x();
+      this.nes.reg.incrementX();
     }
-    //util.log(this.nes, str);
   }
 
-  sprite_rendering(line) {
-    var height = this.nes.reg.sprite_size? 16:8;
-    var pattern_addr = this.nes.reg.sprite_pattern? 0x1000:0x0000;
+  spriteRendering(line) {
+    var height = this.nes.reg.spriteSize? 16:8;
+    var patternAddr = this.nes.reg.spritePattern? 0x1000:0x0000;
 
     for(var i=0; i<64; i++) {
-      var y = this.oamram[(i*4)+0] + 1;
-      var tile_index = this.oamram[(i*4)+1];
-      var attr_byte = this.oamram[(i*4)+2];
-      var x = this.oamram[(i*4)+3];
+      var y = this.oamRam[(i*4)+0] + 1;
+      var tileIndex = this.oamRam[(i*4)+1];
+      var attrByte = this.oamRam[(i*4)+2];
+      var x = this.oamRam[(i*4)+3];
 
       var offset = line - y;
       if(offset < 0 || offset >= height)
         continue;
 
-      var v_flip = (attr_byte>>7) & 1;
-      if(v_flip)
+      var vFlip = (attrByte>>7) & 1;
+      if(vFlip)
         offset = height - 1 - offset;
 
-      var h_flip = (attr_byte>>6) & 1;
+      var hFlip = (attrByte>>6) & 1;
       var start, end, inc;
-      if(h_flip)
+      if(hFlip)
         start = 0, end = 8, inc = 1;
       else
         start = 7, end = -1, inc = -1;
 
-      var bg_pri = (attr_byte>>5) & 1;
-      var upper_bit = (attr_byte&3) << 2;
+      var bgPriority = (attrByte>>5) & 1;
+      var upperBit = (attrByte&3) << 2;
 
-      var tile_addr = 0;
+      var tileAddr = 0;
       if(height == 16) {
-        var index = tile_index & ~1;
-        var bank = tile_index & 1;
+        var index = tileIndex & ~1;
+        var bank = tileIndex & 1;
         if(offset > 7) {
           index++;
           offset -= 8;
         }
-        tile_addr = (index*16) + (bank*0x1000) + offset;
+        tileAddr = (index*16) + (bank*0x1000) + offset;
       } else {
-        tile_addr = pattern_addr + (tile_index*16) + offset;
+        tileAddr = patternAddr + (tileIndex*16) + offset;
       }
 
-      var low_tile = this.mmc.read_chr(tile_addr);
-      var high_tile = this.mmc.read_chr(tile_addr + 8);
+      var lowTile = this.mmc.readChr(tileAddr);
+      var highTile = this.mmc.readChr(tileAddr + 8);
 
       for(var j=start; j!=end; j+=inc) {
-        if(!this.sprite_rendered[x+j]) {
-          var lower_bit = (low_tile&1) | ((high_tile&1)<<1);
-          if(lower_bit) {
-            if(!bg_pri || !this.bg_rendered[x+j]) {
-              this.line_buf[x+j] = this.palette[0x10|upper_bit|lower_bit];
-              this.sprite_rendered[x+j] = 1;
+        if(!this.spriteRendered[x+j]) {
+          var lowerBit = (lowTile&1) | ((highTile&1)<<1);
+          if(lowerBit) {
+            if(!bgPriority || !this.bgRendered[x+j]) {
+              this.lineBuf[x+j] = this.palette[0x10|upperBit|lowerBit];
+              this.spriteRendered[x+j] = 1;
             }
           }
         }
 
-        low_tile >>= 1;
-        high_tile >>= 1;
+        lowTile >>= 1;
+        highTile >>= 1;
       }
-
-      /*
-      if(this.debug && line == 0x28) {
-        var str = util.to_hex(y) + ","
-          + util.to_hex(tile_index) + ","
-          + util.to_hex(attr_byte) + ","
-          + util.to_hex(x) + ","
-          + util.to_hex(tile_addr) + ","
-          + util.to_hex(low_tile) + ","
-          + util.to_hex(high_tile);
-        util.log(this.nes, str);
-      }
-      */
     }
   }
 
-  sprite_evaluation(line) {
-    if(this.nes.reg.sprite_visibility) {
-      var y = this.oamram[0] + 1;
-      var tile_index = this.oamram[1];
-      var attr_byte = this.oamram[2];
-      var height = this.nes.reg.sprite_size? 16:8;
-      var pattern_addr = this.nes.reg.sprite_pattern? 0x1000:0x0000;
+  spriteEvaluation(line) {
+    if(this.nes.reg.spriteVisibility) {
+      var y = this.oamRam[0] + 1;
+      var tileIndex = this.oamRam[1];
+      var attrByte = this.oamRam[2];
+      var height = this.nes.reg.spriteSize? 16:8;
+      var patternAddr = this.nes.reg.spritePattern? 0x1000:0x0000;
 
       var offset = line - y;
       if(offset >= 0 && offset < height) {
-        if(attr_byte&0x80)
+        if(attrByte&0x80)
           offset = height - 1 - offset;
 
-        var tile_addr = 0;
+        var tileAddr = 0;
         if(height == 16) {
-          var index = tile_index & ~1;
-          var bank = tile_index & 1;
+          var index = tileIndex & ~1;
+          var bank = tileIndex & 1;
           if(offset > 7) {
             index++;
             offset -= 8;
           }
-          tile_addr = (index*16) + (bank*0x1000) + offset;
+          tileAddr = (index*16) + (bank*0x1000) + offset;
         } else {
-          tile_addr = pattern_addr + (tile_index*16) + offset;
+          tileAddr = patternAddr + (tileIndex*16) + offset;
         }
 
-        var low_tile = this.mmc.read_chr(tile_addr);
-        var high_tile = this.mmc.read_chr(tile_addr + 8);
-        if(low_tile | high_tile)
-          this.nes.reg.sprite0_hit = true;
+        var lowTile = this.mmc.readChr(tileAddr);
+        var highTile = this.mmc.readChr(tileAddr + 8);
+        if(lowTile | highTile)
+          this.nes.reg.spriteZeroHit = true;
       }
     }
   }
 
-  debug_out() {
-    var str = "name_table dump:\n";
+  debugNameTable() {
+    var str = "nameTable dump:\n";
     for(var i=0; i<4; i++) {
       str += "[" + i + "]:";
       for(var j=0; j<0x400; j++) {
         if(j%0x28 == 0)
           str += "\n";
-        str += util.to_hex(this.name_table[i][j]).padStart(2, "0") + ",";
+        str += util.hex(this.nameTable[i][j]).padStart(2, "0") + ",";
       }
       str += "\n";
     }
@@ -335,12 +317,12 @@ export class PPU {
     util.log(this.nes, "palette:" + this.palette);
   }
 
-  debug_oam_out() {
-    var str = "oamram dump:";
+  debugOamRam() {
+    var str = "oamRam dump:";
     for(var i=0; i<0x100; i++) {
       if(i%0x20 == 0)
         str += "\n";
-      str += util.to_hex(this.oamram[i]).padStart(2, "0").toUpperCase() + ",";
+      str += util.hex(this.oamRam[i]).padStart(2, "0").toUpperCase() + ",";
     }
     util.log(this.nes, str);
   }

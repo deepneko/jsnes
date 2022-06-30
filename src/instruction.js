@@ -6,22 +6,22 @@ export function imm(cpu) {
 
 export function abs(cpu) {
   cpu.pc += 2;
-  return cpu.read16(cpu.op_addr);
+  return cpu.read16(cpu.opAddr);
 }
 
 export function abx(cpu) {
   cpu.pc += 2;
-  return cpu.read16(cpu.op_addr) + cpu.x;
+  return cpu.read16(cpu.opAddr) + cpu.x;
 }
 
 export function aby(cpu) {
   cpu.pc += 2;
-  return cpu.read16(cpu.op_addr) + cpu.y;
+  return cpu.read16(cpu.opAddr) + cpu.y;
 }
 
 export function ind(cpu) {
   cpu.pc += 2;
-  return cpu.read16(cpu.read16(cpu.op_addr));
+  return cpu.read16(cpu.read16(cpu.opAddr));
 }
 
 export function zp(cpu) {
@@ -29,15 +29,15 @@ export function zp(cpu) {
 }
 
 export function zpx(cpu) {
-  return util.to_u8(cpu.read8(cpu.pc++) + cpu.x);
+  return util.u8(cpu.read8(cpu.pc++) + cpu.x);
 }
 
 export function zpy(cpu) {
-  return util.to_u8(cpu.read8(cpu.pc++) + cpu.y);
+  return util.u8(cpu.read8(cpu.pc++) + cpu.y);
 }
 
 export function indx(cpu) {
-  return cpu.read16(util.to_u8(cpu.read8(cpu.pc++) + cpu.x));
+  return cpu.read16(util.u8(cpu.read8(cpu.pc++) + cpu.x));
 }
 
 export function indy(cpu) {
@@ -46,25 +46,25 @@ export function indy(cpu) {
 
 export function push8(cpu, data) {
   cpu.write8(0x100|cpu.sp, data);
-  cpu.sp = util.to_u8(cpu.sp - 1);
+  cpu.sp = util.u8(cpu.sp - 1);
 }
 
 export function push16(cpu, data) {
-  cpu.write16(0x100|util.to_u8(cpu.sp-1), data);
-  cpu.sp = util.to_u8(cpu.sp - 2);
+  cpu.write16(0x100|util.u8(cpu.sp-1), data);
+  cpu.sp = util.u8(cpu.sp - 2);
 }
 
 export function pop8(cpu) {
-  cpu.sp = util.to_u8(cpu.sp + 1)
+  cpu.sp = util.u8(cpu.sp + 1)
   return cpu.read8(0x100|cpu.sp);
 }
 
 export function pop16(cpu) {
-  cpu.sp = util.to_u8(cpu.sp + 2);
-  return cpu.read16(0x100|util.to_u8(cpu.sp-1));
+  cpu.sp = util.u8(cpu.sp + 2);
+  return cpu.read16(0x100|util.u8(cpu.sp-1));
 }
 
-export function get_status(cpu) {
+export function getStatus(cpu) {
   return ((cpu.n<<7)
       | (cpu.v<<6)
       | (1<<5)
@@ -75,7 +75,7 @@ export function get_status(cpu) {
       | cpu.c);
 }
 
-export function set_status(cpu, s) {
+export function setStatus(cpu, s) {
   cpu.n = s >> 7;
   cpu.v = (s >> 6) & 1;
   cpu.b = (s >> 4) & 1;
@@ -87,29 +87,29 @@ export function set_status(cpu, s) {
 
 export function adc(cpu, cycle, addr) {
   var s = cpu.read8(addr);
-  var t = util.to_u16(cpu.a + s + cpu.c);
+  var t = util.u16(cpu.a + s + cpu.c);
   cpu.c = (t >> 8)? 1:0;
   cpu.z = (t & 0xff) == 0;
   cpu.n = (t >> 7) & 1;
   cpu.v = !((cpu.a^s)&0x80) && ((cpu.a^t)&0x80);
-  cpu.a = util.to_u8(t);
+  cpu.a = util.u8(t);
   cpu.cycles -= cycle;
 }
 
 export function sbc(cpu, cycle, addr) {
   var s = cpu.read8(addr);
-  var t = util.to_u16(cpu.a - s - (1-cpu.c));
+  var t = util.u16(cpu.a - s - (1-cpu.c));
   cpu.c = t < 0x100;
   cpu.z = (t&0xff) == 0;
   cpu.n = (t >> 7) & 1;
   cpu.v = ((cpu.a^s)&0x80) && ((cpu.a^t)&0x80);
-  cpu.a = util.to_u8(t);
+  cpu.a = util.u8(t);
   cpu.cycles -= cycle;
 }
 
 export function cpx(cpu, cycle, addr) {
   var s = cpu.read8(addr);
-  var t = util.to_u16(cpu.x - s);
+  var t = util.u16(cpu.x - s);
   cpu.c = cpu.x >= s;
   cpu.z = (t&0xff) == 0;
   cpu.n = (t >> 7) & 1;
@@ -118,7 +118,7 @@ export function cpx(cpu, cycle, addr) {
 
 export function cpy(cpu, cycle, addr) {
   var s = cpu.read8(addr);
-  var t = util.to_u16(cpu.y - s);
+  var t = util.u16(cpu.y - s);
   cpu.c = cpu.y >= s;
   cpu.z = (t&0xff) == 0;
   cpu.n = (t >> 7) & 1;
@@ -127,7 +127,7 @@ export function cpy(cpu, cycle, addr) {
 
 export function cmp(cpu, cycle, addr) {
   var s = cpu.read8(addr);
-  var t = util.to_u16(cpu.a - s);
+  var t = util.u16(cpu.a - s);
   cpu.c = cpu.a >= s;
   cpu.z = (t&0xff) == 0;
   cpu.n = (t >> 7) & 1;
@@ -246,9 +246,9 @@ export function txs(cpu, cycle) {
   cpu.cycles -= cycle;
 }
 
-export function asl_a(cpu, cycle) {
+export function aslA(cpu, cycle) {
   cpu.c = cpu.a >> 7;
-  cpu.a = util.to_u8(cpu.a << 1);
+  cpu.a = util.u8(cpu.a << 1);
   cpu.n = cpu.a >> 7;
   cpu.z = cpu.a == 0;
   cpu.cycles -= cycle;
@@ -257,14 +257,14 @@ export function asl_a(cpu, cycle) {
 export function asl(cpu, cycle, addr) {
   var t = cpu.read8(addr);
   cpu.c = t >> 7;
-  t = util.to_u8(t << 1);
+  t = util.u8(t << 1);
   cpu.n = t >> 7;
   cpu.z = t == 0;
   cpu.write8(addr, t);
   cpu.cycles -= cycle;
 }
 
-export function lsr_a(cpu, cycle){
+export function lsrA(cpu, cycle){
   cpu.c = cpu.a & 1;
   cpu.a >>= 1;
   cpu.n = cpu.a >> 7;
@@ -282,9 +282,9 @@ export function lsr(cpu, cycle, addr) {
   cpu.cycles -= cycle;
 }
 
-export function rol_a(cpu, cycle) {
+export function rolA(cpu, cycle) {
   var u = cpu.a;
-  cpu.a = util.to_u8((cpu.a << 1) | cpu.c);
+  cpu.a = util.u8((cpu.a << 1) | cpu.c);
   cpu.c = u >> 7;
   cpu.n = cpu.a >> 7;
   cpu.z = cpu.a == 0;
@@ -294,7 +294,7 @@ export function rol_a(cpu, cycle) {
 export function rol(cpu, cycle, addr) {
   var t = cpu.read8(addr);
   var u = t;
-  t = util.to_u8((t << 1) | cpu.c);
+  t = util.u8((t << 1) | cpu.c);
   cpu.c = u >> 7;
   cpu.n = t >> 7;
   cpu.z = t == 0;
@@ -302,9 +302,9 @@ export function rol(cpu, cycle, addr) {
   cpu.cycles -= cycle;
 }
 
-export function ror_a(cpu, cycle) {
+export function rorA(cpu, cycle) {
   var u = cpu.a;
-  cpu.a = util.to_u8((cpu.a >> 1) | (cpu.c << 7));
+  cpu.a = util.u8((cpu.a >> 1) | (cpu.c << 7));
   cpu.c = u & 1;
   cpu.n = cpu.a >> 7;
   cpu.z = cpu.a == 0;
@@ -314,7 +314,7 @@ export function ror_a(cpu, cycle) {
 export function ror(cpu, cycle, addr) {
   var t = cpu.read8(addr);
   var u = t;
-  t = util.to_u8((t >> 1) | (cpu.c << 7));
+  t = util.u8((t >> 1) | (cpu.c << 7));
   cpu.c = u & 1;
   cpu.n = t >> 7;
   cpu.z = t == 0;
@@ -323,7 +323,7 @@ export function ror(cpu, cycle, addr) {
 }
 
 export function inc(cpu, cycle, addr) {
-  var t = util.to_u8(cpu.read8(addr) + 1);
+  var t = util.u8(cpu.read8(addr) + 1);
   cpu.n = t >> 7;
   cpu.z = t == 0;
   cpu.write8(addr, t);
@@ -331,21 +331,21 @@ export function inc(cpu, cycle, addr) {
 }
 
 export function inx(cpu, cycle) {
-  cpu.x = util.to_u8(cpu.x + 1);
+  cpu.x = util.u8(cpu.x + 1);
   cpu.n = cpu.x >> 7;
   cpu.z = cpu.x == 0;
   cpu.cycles -= cycle;
 }
 
 export function iny(cpu, cycle) {
-  cpu.y = util.to_u8(cpu.y + 1);
+  cpu.y = util.u8(cpu.y + 1);
   cpu.n = cpu.y >> 7;
   cpu.z = cpu.y == 0;
   cpu.cycles -= cycle;
 }
 
 export function dec(cpu, cycle, addr) {
-  var t = util.to_u8(cpu.read8(addr) - 1);
+  var t = util.u8(cpu.read8(addr) - 1);
   cpu.n = t >> 7;
   cpu.z = t == 0;
   cpu.write8(addr, t);
@@ -353,21 +353,21 @@ export function dec(cpu, cycle, addr) {
 }
 
 export function dex(cpu, cycle) {
-  cpu.x = util.to_u8(cpu.x - 1);
+  cpu.x = util.u8(cpu.x - 1);
   cpu.n = cpu.x >> 7;
   cpu.z = cpu.x == 0;
   cpu.cycles -= cycle;
 }
 
 export function dey(cpu, cycle) {
-  cpu.y = util.to_u8(cpu.y - 1);
+  cpu.y = util.u8(cpu.y - 1);
   cpu.n = cpu.y >> 7;
   cpu.z = cpu.y == 0;
   cpu.cycles -= cycle;
 }
 
 export function rel(cpu, cond) {
-  var addr = util.to_s8(cpu.read8(this.imm(cpu)));
+  var addr = util.s8(cpu.read8(this.imm(cpu)));
   if(cond) {
     if(cpu.pc&0xff00 != (cpu.pc+addr)&0xff00)
       cpu.cycles--;
@@ -428,12 +428,12 @@ export function bvs(cpu, cycle) {
 
 export function brk(cpu, cycle) {
   cpu.b = 1;
-  cpu.pc = util.to_u16(cpu.pc + 1);
+  cpu.pc = util.u16(cpu.pc + 1);
   cpu.intr(cpu.INTR.IRQ);
 }
 
 export function jsr(cpu, cycle) {
-  this.push16(cpu, util.to_u16(cpu.pc + 1));
+  this.push16(cpu, util.u16(cpu.pc + 1));
   cpu.pc = this.abs(cpu);
   cpu.cycles -= cycle;
 }
@@ -444,23 +444,23 @@ export function jmp(cpu, cycle, addr) {
 }
 
 export function rti(cpu, cycle) {
-  this.set_status(cpu, this.pop8(cpu));
+  this.setStatus(cpu, this.pop8(cpu));
   cpu.pc = this.pop16(cpu);
   cpu.cycles -= cycle;
 }
 
 export function rts(cpu, cycle) {
-  cpu.pc = util.to_u16(this.pop16(cpu) + 1);
+  cpu.pc = util.u16(this.pop16(cpu) + 1);
   cpu.cycles -= cycle;
 }
 
 export function php(cpu, cycle) {
-  this.push8(cpu, this.get_status(cpu));
+  this.push8(cpu, this.getStatus(cpu));
   cpu.cycles -= cycle;
 }
 
 export function plp(cpu, cycle) {
-  this.set_status(cpu, this.pop8(cpu));
+  this.setStatus(cpu, this.pop8(cpu));
   cpu.cycles -= cycle;
 }
 

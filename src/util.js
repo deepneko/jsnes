@@ -1,30 +1,30 @@
-export function to_u8(dat) {
+export function u8(dat) {
   return dat & 0xff;
 }
 
-export function to_u16(dat) {
+export function u16(dat) {
   return dat & 0xffff;
 }
 
-export function to_u32(dat) {
+export function u32(dat) {
   return dat & 0xffffffff;
 }
 
-export function to_s8(dat) {
+export function s8(dat) {
   var ret = dat&0xff;
   if(ret & 0x80)
     return (ret&0x7f) - 0x80;
   return ret;
 }
 
-export function to_s16(dat) {
+export function s16(dat) {
   var ret = dat&0xffff;
   if(ret & 0x8000)
     return (ret&0x7fff) - 0x8000;
   return ret;
 }
 
-export function to_s32(dat) {
+export function s32(dat) {
   var ret = dat&0xffffffff;
   if(ret & 0x80000000)
     return (ret&0x7fffffff) - 0x80000000;
@@ -35,16 +35,12 @@ export function log(nes, data) {
   nes.log += data + "\n";
 }
 
-export function to_hex(dat) {
+export function hex(dat) {
   return parseInt(dat).toString(16);
 }
 
-export function get_max(a, b) {
-  return (a > b) ? a : b;
-}
-
-export function get_min(a, b) {
-  return (a < b) ? a : b;
+export function round(a, b) {
+  return Math.round(a * (10**b)) / (10**b);
 }
 
 export class Queue {

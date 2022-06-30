@@ -3,25 +3,25 @@ export class NRom {
     this.nes = nes;
     this.rom = nes.rom;
 
-    this.prg_bank = this.rom.prg_rom;
-    this.chr_bank = this.rom.chr_rom;
+    this.prgBank = this.rom.prgRom;
+    this.chrBank = this.rom.chrRom;
 
     console.log("NRom", this);
   }
 
   read(addr) {
-    return this.prg_bank[addr - 0x8000];
+    return this.prgBank[addr - 0x8000];
   }
 
   write(addr, data) {
   }
 
-  read_chr(addr) {
-    return this.chr_bank[addr];
+  readChr(addr) {
+    return this.chrBank[addr];
   }
 
-  write_chr(addr, data) {
-    this.chr_bank[addr] = data;
+  writeChr(addr, data) {
+    this.chrBank[addr] = data;
   }
 }
 

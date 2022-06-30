@@ -1,4 +1,3 @@
-import * as inst from './instruction.js'
 import * as util from './util.js'
 
 export class Register {
@@ -10,86 +9,91 @@ export class Register {
     this.mmc = nes.mmc;
     this.joypad0 = nes.joypad0;
     this.joypad1 = nes.joypad1;
-    console.log("constructor Regs", this);
+    console.log("constructor Register", this);
   }
 
   reset() {
-    this.execute_nmi = 0;
-    this.sprite_size = 0;
-    this.bg_pattern = 0;
-    this.sprite_pattern = 0;
-    this.ppu_addr_inc = 0;
-    this.bg_color = 0;
-    this.bg_visibility = 0;
-    this.sprite_visibility = 0;
-    this.bg_clipping = 0;
-    this.sprite_clipping = 0;
-    this.display_type = 0;
-    this.vblank_occur = 0;
-    this.sprite0_hit = 0;
-    this.sprite_overflow = 0;
-    this.vram_write_flag = 0;
-    this.oamram_addr = 0;
-    this.ppuio_buf = 0;
-    this.ppu_t = 0;
-    this.ppu_v = 0;
-    this.ppu_x = 0;
-    this.ppu_w = 0;
+    this.executeNmi = 0;
+    this.spriteSize = 0;
+    this.bgPattern = 0;
+    this.spritePattern = 0;
+    this.ppuAddrInc = 0;
+    this.bgColor = 0;
+    this.bgVisibility = 0;
+    this.spriteVisibility = 0;
+    this.bgClipping = 0;
+    this.spriteClipping = 0;
+    this.displayType = 0;
+    this.vblankStatus = 0;
+    this.spriteZeroHit = 0;
+    this.spriteOverflow = 0;
+    this.oamAddr = 0;
+    this.vram = 0;
+    this.regT = 0;
+    this.regV = 0;
+    this.regX = 0;
+    this.regW = 0;
   }
 
-  set_vblank() {
-    this.vblank_occur = 1;
-    this.sprite0_hit = 0;
+  setVblank() {
+    this.vblankStatus = 1;
+    this.spriteZeroHit = 0;
   }
 
-  clear_vblank() {
-    this.vblank_occur = 0;
-    this.cpu.set_intr(null);
+  clearVblank() {
+    this.vblankStatus = 0;
+    this.cpu.setIntr(null);
   }
 
-  invoke_irq() {
-    if((this.apu.frame_irq & 0xC0) == 0)
-      this.cpu.set_intr(this.cpu.INTR.IRQ);
+  initFrame() {
+    if(this.bgVisibility || this.spriteVisibility)
+      this.regV = this.regT;
   }
 
-  invoke_nmi() {
-    if(this.execute_nmi)
-      this.cpu.set_intr(this.cpu.INTR.NMI);
+  invokeIrq() {
+    if((this.apu.frameIrq & 0xC0) == 0)
+      this.cpu.setIntr(this.cpu.INTR.IRQ);
   }
 
-  copy_x() {
-    if(this.bg_visibility || this.sprite_visibility)
-      this.ppu_v = (this.ppu_v&0xfbe0) | (this.ppu_t&0x041f);
+  invokeNmi() {
+    if(!this.vblankStatus || this.executeNmi) {
+      this.cpu.setIntr(this.cpu.INTR.NMI);
+    }
   }
 
-  copy_y() {
-    if(this.bg_visibility || this.sprite_visibility)
-      this.ppu_v = (this.ppu_v&0x841f) | (this.ppu_t&0x7be0)
+  copyX() {
+    if(this.bgVisibility || this.spriteVisibility)
+      this.regV = (this.regV&0xfbe0) | (this.regT&0x041f);
   }
 
-  increment_x() {
-    if((this.ppu_v&0x1f) == 0x1f)
-      this.ppu_v = (this.ppu_v&~0x1f) ^ 0x400;
+  copyY() {
+    if(this.bgVisibility || this.spriteVisibility)
+      this.regV = (this.regV&0x841f) | (this.regT&0x7be0);
+  }
+
+  incrementX() {
+    if((this.regV&0x1f) == 0x1f)
+      this.regV = (this.regV&~0x1f) ^ 0x400;
     else
-      this.ppu_v++;
+      this.regV++;
   }
 
-  increment_y() {
-    if(this.bg_visibility || this.sprite_visibility) {
-      if((this.ppu_v & 0x7000) != 0x7000) {
-        this.ppu_v += 0x1000;
+  incrementY() {
+    if(this.bgVisibility || this.spriteVisibility) {
+      if((this.regV & 0x7000) != 0x7000) {
+        this.regV += 0x1000;
       } else {
-        this.ppu_v &= ~0x7000;
-        var y = (this.ppu_v & 0x03E0) >> 5;
+        this.regV &= ~0x7000;
+        var y = (this.regV & 0x03E0) >> 5;
         if(y == 29) {
           y = 0;
-          this.ppu_v ^= 0x800;
+          this.regV ^= 0x800;
         } else if(y == 31) {
           y = 0;
         } else {
           y++;
         }
-        this.ppu_v = (this.ppu_v & ~0x03E0) | (y << 5)
+        this.regV = (this.regV & ~0x03E0) | (y << 5)
       }
     }
   }
@@ -101,12 +105,11 @@ export class Register {
       return 0;
 
     case 0x2002: // PPUSTAT (R)
-      var ret = (this.vblank_occur << 7)
-        | (this.sprite0_hit << 6)
-        | (this.sprite_overflow << 5)
-        | (this.vram_write_flag << 4);
-      this.set_vblank(0, 1);
-      this.ppu_w = 0;
+      var ret = (this.vblankStatus << 7)
+        | (this.spriteZeroHit << 6)
+        | (this.spriteOverflow << 5);
+      this.clearVblank();
+      this.regW = 0;
       return ret;
 
     case 0x2003: // SPRADDR (W)
@@ -116,28 +119,27 @@ export class Register {
       return 0;
 
     case 0x2007: // PPUIO   (R/W)
-      var ret = this.ppuio_buf;
-      var v = this.ppu_v;
+      var ret = this.vram;
+      var v = this.regV;
       switch(true) {
       case v < 0x2000:
-        this.ppuio_buf = this.mmc.read_chr(v);
+        this.vram = this.mmc.readChr(v);
         break;
       case v < 0x3f00:
-        this.ppuio_buf = this.ppu.read(v);
+        this.vram = this.ppu.read(v);
         break;
       case v >= 0x3f00:
-        // $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C
         if((v%4) == 0)
           v &= ~0x10;
-        this.ppuio_buf = this.ppu.palette[v&0x1f];
+        this.vram = this.ppu.palette[v&0x1f];
         break;
       }
 
-      this.ppu_v += this.ppu_addr_inc ? 32:1;
+      this.regV += this.ppuAddrInc ? 32:1;
       return ret;
 
     case 0x4015:
-      return this.apu.read(addr) | (((this.frame_irq&0xC0)==0)? 0x40:0);
+      return this.apu.read(addr) | (((this.apu.frameIrq&0xC0)==0)? 0x40:0);
 
     case 0x4016: // SPECIO1  (RW)
       var ret = 0;
@@ -173,80 +175,79 @@ export class Register {
   write(addr, data) {
     switch(addr) {
     case 0x2000: // PPUCNT0 (W)
-      this.execute_nmi = (data>>7) & 1;
-      this.ppu_master = (data>>6) & 1;
-      this.sprite_size = (data>>5) & 1;
-      this.bg_pattern = (data>>4) & 1;
-      this.sprite_pattern = (data>>3) & 1;
-      this.ppu_addr_inc = (data>>2) & 1;
-      this.ppu_t = (this.ppu_t&0xf3ff) | ((data&3) << 10);
+      this.executeNmi = (data>>7) & 1;
+      this.masterSlave = (data>>6) & 1;
+      this.spriteSize = (data>>5) & 1;
+      this.bgPattern = (data>>4) & 1;
+      this.spritePattern = (data>>3) & 1;
+      this.ppuAddrInc = (data>>2) & 1;
+      this.regT = (this.regT&0xf3ff) | ((data&3) << 10);
       break;
 
     case 0x2001: // PPUCNT1 (W)
-      this.bg_color = data >> 5;
-      this.sprite_visibility = (data>>4) & 1;
-      this.bg_visibility = (data>>3) & 1;
-      this.sprite_clipping = (data>>2) & 1;
-      this.bg_clipping = (data>>1) & 1;
-      this.display_type = data & 1;
+      this.bgColor = data >> 5;
+      this.spriteVisibility = (data>>4) & 1;
+      this.bgVisibility = (data>>3) & 1;
+      this.spriteClipping = (data>>2) & 1;
+      this.bgClipping = (data>>1) & 1;
+      this.displayType = data & 1;
       break;
 
     case 0x2002: // PPUSTAT (R)
       break;
 
     case 0x2003: // SPRADDR (W)
-      this.oamram_addr = data;
+      this.oamAddr = data;
       break;
 
     case 0x2004: // SPRIO   (W)
-      this.ppu.oamram[this.oamram_addr++] = data;
+      this.ppu.oamRam[this.oamAddr++] = data;
       break;
 
     case 0x2005: // BGSCROL (W*2)
-      if(!this.ppu_w) {
-        this.ppu_t = (this.ppu_t&0xffe0) | (data>>3);
-        this.ppu_x = data&7;
-        this.ppu_w = 1;
+      if(!this.regW) {
+        this.regT = (this.regT&0xffe0) | (data>>3);
+        this.regX = data&7;
+        this.regW = 1;
       } else {
-        this.ppu_t = (this.ppu_t&0xfc1f) | ((data>>3)<<5);
-        this.ppu_t = (this.ppu_t&0x8fff) | ((data&7)<<12);
-        this.ppu_w = 0;
+        this.regT = (this.regT&0xfc1f) | ((data>>3)<<5);
+        this.regT = (this.regT&0x8fff) | ((data&7)<<12);
+        this.regW = 0;
       }
       break;
 
     case 0x2006: // PPUADDR (W*2)
-      if(!this.ppu_w) {
-        this.ppu_t = (this.ppu_t&0x80ff) | ((data&0x3f)<<8);
-        this.ppu_w = 1;
+      if(!this.regW) {
+        this.regT = (this.regT&0x80ff) | ((data&0x3f)<<8);
+        this.regW = 1;
       } else {
-        this.ppu_t = (this.ppu_t&0xff00) | data;
-        this.ppu_v = this.ppu_t;
-        this.ppu_w = 0;
+        this.regT = (this.regT&0xff00) | data;
+        this.regV = this.regT;
+        this.regW = 0;
       }
       break;
 
     case 0x2007: // PPUIO   (R/W)
-      var v = this.ppu_v;
+      var v = this.regV;
       switch(true) {
       case v < 0x2000:
-        this.mmc.write_chr(v, data);
+        this.mmc.writeChr(v, data);
         break;
       case v < 0x3f00:
         this.ppu.write(v, data);
         break;
       case v >= 0x3f00:
-        // $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C
         if((v%4) == 0)
           v &= ~0x10;
         this.ppu.palette[v&0x1f] = data&0x3f;
         break;
       }
-      this.ppu_v += this.ppu_addr_inc ? 32:1;
+      this.regV += this.ppuAddrInc ? 32:1;
       break;
 
     case 0x4014: // SPRDMA  (W)
       for(var i=0; i<0x100; i++)
-        this.ppu.oamram[i] = this.mmc.read((data<<8)|i);
+        this.ppu.oamRam[i] = this.mmc.read((data<<8)|i);
       break;
 
     case 0x4016: // SPECIO1 (W)
@@ -256,7 +257,7 @@ export class Register {
       break;
 
     case 0x4017:
-      this.apu.frame_irq = data;
+      this.apu.frameIrq = data;
       break;
 
     default:
@@ -266,4 +267,3 @@ export class Register {
     }
   }
 }
-

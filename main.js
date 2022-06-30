@@ -2,11 +2,12 @@ import { NES, } from './src/nes.js'
 import { Output, } from './src/output.js'
 import * as util from './src/util.js'
 
-export function main(rom) {
-  var canvas = document.getElementById('console');
-  var output = new Output(canvas);
+export async function main(rom) {
+  var output = new Output();
+
   var nes = new NES(output);
   output.nes = nes;
+  output.soundStart();
 
   if(!nes.load(rom)) {
     console.log("invalid rom");
@@ -20,46 +21,40 @@ export function main(rom) {
     return;
   }
 
-  var quit = false;
   document.addEventListener('keydown', function(e) {
-    nes.joypad0.key_status[e.code] = 1;
-
-    //if(nes.debug)
-      util.log(nes, "Input Keydown:" + e.code);
-
+    nes.joypad0.keyStatus[e.code] = 1;
     if(e.code == "KeyQ")
-      quit = true;
-    if(e.code == "Backspace") {
-      nes.debug = true;
-      nes.cpu.debug = true;
+      nes.quit = true;
+    if(e.code == "KeyR") {
+      nes.reset();
     }
-    if(e.code == "KeyP")
-      nes.ppu.debug = true;
   }, false);
 
   document.addEventListener('keyup', function(e) {
-    nes.joypad0.key_status[e.code] = 0;
+    nes.joypad0.keyStatus[e.code] = 0;
   }, false);
 
+  nes.debug = false;
+  nes.cpu.debug = false;
+  nes.ppu.debug = false;
+  nes.apu.debug = false;
+
   console.log("Starting NES emulation");
-
-  //nes.debug = true;
-  //nes.cpu.debug = true;
-  var cnt = 0;
   try {
-    var timer = setInterval(function() {
+    var emulation = setInterval(async function() {
       nes.frame();
-      cnt++;
 
-      if(quit) {
-        console.log("nes return");
-        clearInterval(timer);
+      if(nes.quit) {
+        console.log("Finished NES emulation");
+        output.soundStop();
 
         var blob = new Blob([nes.log], { "type" : "text/plain" });
         var e = document.createElement("a");
         e.download = "jsnes.txt";
         e.href = window.URL.createObjectURL(blob);
         e.click();
+
+        clearInterval(emulation);
       }
     }, 1000/60);
   } catch(e) {

@@ -4,7 +4,7 @@ import * as util from './util.js'
 export class CPU {
   constructor(nes) {
     this.nes = nes;
-    this.frequency = 1789773;
+    this.frequency = 3579545.0 / 2;
     this.debug = false;
     this.INTR = { NMI:0, IRQ:1, RESET:2 };
     this.INTR_VECTOR = [ 0xFFFA, 0xFFFE, 0xFFFC ];
@@ -27,18 +27,18 @@ export class CPU {
     this.i = 1;
 
     this.cycles = 0;
-    this.op_addr = 0x00;
+    this.opAddr = 0x00;
     this.mclock = 0;
 
-    this.intr_occur = null;
+    this.intrStatus = null;
   }
 
-  master_clock() {
+  masterClock() {
     return this.mclock - this.cycles;
   }
 
   read8(addr) {
-    return util.to_u8(this.nes.mmc.read(addr));
+    return util.u8(this.nes.mmc.read(addr));
   }
 
   read16(addr) {
@@ -46,18 +46,18 @@ export class CPU {
   }
 
   write8(addr, dat) {
-    this.nes.mmc.write(addr, util.to_u8(dat));
+    this.nes.mmc.write(addr, util.u8(dat));
   }
 
   write16(addr, dat) {
-    this.write8(addr, util.to_u8(dat));
-    this.write8(addr+1, util.to_u8(dat>>8));
+    this.write8(addr, util.u8(dat));
+    this.write8(addr+1, util.u8(dat>>8));
   }
 
-  set_intr(i) {
+  setIntr(i) {
     if(i == this.INTR.NMI)
       this.intr(this.INTR.NMI);
-    this.intr_occur = i;
+    this.intrStatus = i;
   }
 
   intr(i) {
@@ -80,16 +80,16 @@ export class CPU {
     }
 
     inst.push16(this, this.pc);
-    inst.push8(this, inst.get_status(this));
+    inst.push8(this, inst.getStatus(this));
     this.pc = this.read16(vector);
     this.i = 1;
     this.cycles -= 7;
   }
 
-  check_intr() {
-    if(!this.i && this.intr_occur) {
-      this.intr(this.intr_occur);
-      this.intr_occur = null;
+  checkIntr() {
+    if(!this.i && this.intrStatus) {
+      this.intr(this.intrStatus);
+      this.intrStatus = null;
     }
   }
 
@@ -98,14 +98,14 @@ export class CPU {
     this.mclock += cycle;
 
     do {
-      this.check_intr();
+      this.checkIntr();
 
-      if(this.debug) this.debug_out();
+      if(this.debug) this.debugOut();
 
-      var op_code = this.read8(this.pc++);
-      this.op_addr = this.pc;
+      var opCode = this.read8(this.pc++);
+      this.opAddr = this.pc;
 
-      switch(op_code) {
+      switch(opCode) {
       /* LDA */
       case 0xa9:
         inst.lda(this, 2, inst.imm(this)); break;
@@ -352,7 +352,7 @@ export class CPU {
 
       /* ASL */
       case 0x0a:
-        inst.asl_a(this, 2); break;
+        inst.aslA(this, 2); break;
       case 0x06:
         inst.asl(this, 5, inst.zp(this)); break;
       case 0x0e:
@@ -364,7 +364,7 @@ export class CPU {
 
       /* LSR */
       case 0x4a:
-        inst.lsr_a(this, 2); break;
+        inst.lsrA(this, 2); break;
       case 0x46:
         inst.lsr(this, 5, inst.zp(this)); break;
       case 0x4e:
@@ -376,7 +376,7 @@ export class CPU {
 
       /* ROL */
       case 0x2a:
-        inst.rol_a(this, 2); break;
+        inst.rolA(this, 2); break;
       case 0x26:
         inst.rol(this, 5, inst.zp(this)); break;
       case 0x2e:
@@ -388,7 +388,7 @@ export class CPU {
 
       /* ROR */
       case 0x6a:
-        inst.ror_a(this, 2); break;
+        inst.rorA(this, 2); break;
       case 0x66:
         inst.ror(this, 5, inst.zp(this)); break;
       case 0x6e:
@@ -525,15 +525,15 @@ export class CPU {
       }
 
       if(this.debug)
-        util.log(this.nes, "cycles:" + parseInt(this.cycles).toString(16));
+        util.log(this.nes, "cycles:" + parseInt(this.cycles).toString(16).toUpperCase());
     } while(this.cycles > 0);
   }
 
-  debug_out() {
-    var op_code = this.read8(this.pc);
-    var op_addr = this.read16(this.pc + 1);
+  debugOut() {
+    var opCode = this.read8(this.pc);
+    var opAddr = this.read16(this.pc + 1);
 
-    var inst_name = [
+    var instName = [
       "BRK", "ORA", "NaN", "NaN", "NaN", "ORA", "ASL", "NaN",
       "PHP", "ORA", "ASL", "NaN", "NaN", "ORA", "ASL", "NaN",
       "BPL", "ORA", "NaN", "NaN", "NaN", "ORA", "ASL", "NaN",
@@ -568,7 +568,7 @@ export class CPU {
       "SED", "SBC", "NaN", "NaN", "NaN", "SBC", "INC", "NaN",
       ];
 
-    var addr_mode = [
+    var addrMode = [
       0, 7, 0, 0, 0, 3, 3, 0, 0, 2, 1, 0, 0, 9, 9, 0,
      13, 8, 0, 0, 0, 5, 5, 0, 0,11, 0, 0, 0,10,10, 0,
       9, 7, 0, 0, 3, 3, 3, 0, 0, 2, 1, 0, 9, 9, 9, 0,
@@ -587,7 +587,7 @@ export class CPU {
      13, 8, 0, 0, 0, 5, 5, 0, 0,11, 0, 0, 0,10,10, 0,
       ];
 
-    var addr_mode_name = [
+    var addrModeName = [
       "IMP",
       "ACC",
       "IMM",
@@ -616,63 +616,63 @@ export class CPU {
       return parseInt(c).toString(16).toUpperCase();
     };
 
-    var regs = " A:" + int2hex(this.a).padStart(2, "0")
+    var regs = "A:" + int2hex(this.a).padStart(2, "0")
              + " X:" + int2hex(this.x).padStart(2, "0")
              + " Y:" + int2hex(this.y).padStart(2, "0")
              + " SP:" + int2hex(this.sp).padStart(2, "0");
 
     var executed = function(c, pc) {
       return int2hex(pc).padStart(4, "0") + ", "
-      + "0x" + int2hex(op_code).padStart(2, "0") + ", " 
+      + "0x" + int2hex(opCode).padStart(2, "0") + ", " 
       + c.padEnd(14) + ", " 
-      + addr_mode_name[addr_mode[op_code]].padStart(4, " ") + ", "
+      //+ addrModeName[addrMode[opCode]].padStart(4, " ") + ", "
       + regs + ", "
       + flags;
     };
 
     var c = null;
-    switch(addr_mode[op_code]) {
+    switch(addrMode[opCode]) {
     case 0: // Implied
-      c = inst_name[op_code];
+      c = instName[opCode];
       break;
     case 1: // Accumulator
-      c = inst_name[op_code] + " A";
+      c = instName[opCode] + " A";
       break;
     case 2: // Immediate
-      c = inst_name[op_code] + " #$" + int2hex(op_addr&0xff).padStart(2, "0");
+      c = instName[opCode] + " #$" + int2hex(opAddr&0xff).padStart(2, "0");
       break;
     case 3: // Zero Page
-      c = inst_name[op_code] + " $" + int2hex(op_addr&0xff).padStart(2, "0");
+      c = instName[opCode] + " $" + int2hex(opAddr&0xff).padStart(2, "0");
       break;
     case 4: // Zero Page Indrect
-      c = inst_name[op_code] + " ($" + int2hex(op_addr&0xff).padStart(2, "0") + ")";
+      c = instName[opCode] + " ($" + int2hex(opAddr&0xff).padStart(2, "0") + ")";
       break;
     case 5: // Zero Page Indexed X
-      c = inst_name[op_code] + " $" + int2hex(op_addr&0xff).padStart(2, "0") + ",X";
+      c = instName[opCode] + " $" + int2hex(opAddr&0xff).padStart(2, "0") + ",X";
       break;
     case 6: // Zero Page Indexed Y
-      c = inst_name[op_code] + " $" + int2hex(op_addr&0xff).padStart(2, "0") + ",Y";
+      c = instName[opCode] + " $" + int2hex(opAddr&0xff).padStart(2, "0") + ",Y";
       break;
     case 7: // Zero Page Indexed Indirect X
-      c = inst_name[op_code] + " ($" + int2hex(op_addr&0xff).padStart(2, "0") + ",X)";
+      c = instName[opCode] + " ($" + int2hex(opAddr&0xff).padStart(2, "0") + ",X)";
       break;
     case 8: // Zero Page Indirect Indexed Y
-      c = inst_name[op_code] + " ($" + int2hex(op_addr&0xff).padStart(2, "0") + "),Y";
+      c = instName[opCode] + " ($" + int2hex(opAddr&0xff).padStart(2, "0") + "),Y";
       break;
     case 9: // Absolute
-      c = inst_name[op_code] + " $" + int2hex(op_addr).padStart(4, "0");
+      c = instName[opCode] + " $" + int2hex(opAddr).padStart(4, "0");
       break;
     case 10: // Absolute Indexed X
-      c = inst_name[op_code] + " $" + int2hex(op_addr).padStart(4, "0") + ",X";
+      c = instName[opCode] + " $" + int2hex(opAddr).padStart(4, "0") + ",X";
       break;
     case 11: // Absolute Indexed Y
-      c = inst_name[op_code] + " $" + int2hex(op_addr).padStart(4, "0") + ",Y";
+      c = instName[opCode] + " $" + int2hex(opAddr).padStart(4, "0") + ",Y";
       break;
     case 12: // Absolute Indirect
-      c = inst_name[op_code] + " ($" + int2hex(op_addr).padStart(4, "0") + ")";
+      c = instName[opCode] + " ($" + int2hex(opAddr).padStart(4, "0") + ")";
       break;
     case 13: // Relative
-      c = inst_name[op_code] + " $" + int2hex(this.pc + util.to_s8(op_addr&0xff) + 2).padStart(4, "0");
+      c = instName[opCode] + " $" + int2hex(this.pc + util.s8(opAddr&0xff) + 2).padStart(4, "0");
       break;
     }
 

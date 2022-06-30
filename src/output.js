@@ -1,86 +1,70 @@
 import * as util from "./util.js"
 
 export class Output {
-  constructor(canvas) {
-    this.screen_ctx = canvas.getContext('2d');
-    this.img = this.screen_ctx.createImageData(256, 240);
-    
-    this.sound_ctx = new AudioContext();
-    this.data = 0;
-    this.play = 0;
-    this.len = 0x1000;
-    this.RBUF_SIZE = 0x1000;
-    this.buf = new Uint16Array(this.RBUF_SIZE);
-    this.now_playing = false;
-
-    /*
-    this.hpf1 = this.sound_ctx.createBiquadFilter();
-    this.hpf1.type = "highpass";
-    this.hpf1.frequency.value = 90;
-
-    this.hpf2 = this.sound_ctx.createBiquadFilter();
-    this.hpf2.type = "highpass";
-    this.hpf2.frequency.value = 440;
-
-    this.lpf = this.sound_ctx.createBiquadFilter();
-    this.lpf.type = "lowpass";
-    this.lpf.frequency.value = 14000;
-    */
-
+  constructor() {
     this.nes = null;
+
+    this.screenContext = document.getElementById('console').getContext('2d');
+    this.img = this.screenContext.createImageData(256, 240);
+
+    this.soundContext = null;
+    this.playing = 0;
+    this.played = 0;
+    this.BUF_SIZE = 2048;
+    this.RBUF_SIZE = 4096;
+    this.buf = new Float32Array(this.RBUF_SIZE);
+
     console.log("constructor Output", this);
   }
 
-  rendering(screen) {
+  writeScreen(screen) {
     for(var i=0; i<screen.pixels.length; i++)
       this.img.data[i] = screen.pixels[i];
-    this.screen_ctx.putImageData(this.img, 0, 0);
+    this.screenContext.putImageData(this.img, 0, 0);
   }
 
-  gen_sound(sound) {
-    var audio_buf = this.sound_ctx.createBuffer(1, sound.sample, sound.freq);
-    var buffering = audio_buf.getChannelData(0);
-    for(var i=0; i<sound.sample; i++) {
-      buffering[i] = sound.buf[i] / 65536;
-      //buffering[(this.data+i)%this.RBUF_SIZE] = sound.buf[i] / 65536;
-    }
-    this.data = (this.data + sound.sample) % this.RBUF_SIZE;
+  newSound() {
+    if(this.playing == this.played)
+      return null;
 
-    var sound_src = this.sound_ctx.createBufferSource();
-    var gain = this.sound_ctx.createGain();
-    gain.gain.value = 1;
-    sound_src.buffer = audio_buf;
-    sound_src.connect(gain);
-    gain.connect(this.sound_ctx.destination);
-    /*
-    sound_src.connect(this.hpf1);
-    this.hpf1.connect(this.hpf2);
-    this.hpf2.connect(this.lpf);
-    this.lpf.connect(this.sound_ctx.destination);
-    */
-    var output = this;
-    this.now_playing = true;
-    sound_src.onended = function() {
-      output.now_playing = false;
-      util.log(output.nes, "output now_playing:" + output.now_playing);
-      util.log(output.nes, gain.gain.value);
-    }
-    sound_src.start();
+    var sound = new Sound();
+    sound.sample = (this.RBUF_SIZE + this.playing - this.played) % this.RBUF_SIZE;
+    sound.buf = new Float32Array(sound.sample);
+    return sound;
+  }
 
-    this.play = (this.play + this.len/2) % this.RBUF_SIZE;
+  soundStart() {
+    this.soundContext = new AudioContext();
+    this.scriptNode = this.soundContext.createScriptProcessor(this.BUF_SIZE, 0, 1);
+    this.scriptNode.onaudioprocess = this.onaudioprocess;
+    this.scriptNode.connect(this.soundContext.destination);
+  }
 
-    /*
-    util.log(this.nes, "data:" + this.data);
-    util.log(this.nes, "play:" + this.play);
-    util.log(this.nes, "sample:" + sound.sample);
-    */
+  soundStop() {
+    this.scriptNode.disconnect(this.soundContext.destination);
+    this.scriptNode.onaudioprocess = null;
+    this.scriptNode = null;
+    this.soundContext.close();
+    this.soundContext = null;
+    this.playing = 0;
+    this.played = 0;
+  }
 
-    /*
-    var str = "buffering:";
+  writeSound(sound) {
     for(var i=0; i<sound.sample; i++)
-      str += buffering[i] + ",";
-    util.log(this.nes, str);
-    */
+      this.buf[(this.playing+i)%this.RBUF_SIZE] = sound.buf[i];
+    this.playing = (this.playing + sound.sample) % this.RBUF_SIZE;
+  }
+
+  onaudioprocess = e => {
+    var buffering = e.outputBuffer.getChannelData(0);
+    var size = buffering.length;
+
+    for(var i=0; i<size; i++) {
+      buffering[i] = this.buf[(i+this.played)%this.RBUF_SIZE];
+    }
+
+    this.played = (this.played + size) % this.RBUF_SIZE;
   }
 }
 
@@ -95,33 +79,31 @@ export class Screen {
 }
 
 export class Sound {
-  constructor(output) {
-    this.buf = new Int16Array(4096);
+  constructor() {
+    this.buf = null;
     this.freq = 44100;
     this.bps = 16;
     this.ch = 1;
-
-    var sample = (output.data + output.RBUF_SIZE - output.play) % output.RBUF_SIZE;
-    this.sample = sample == 0? output.RBUF_SIZE:sample;
+    this.sample = 0;
   }
 }
 
 export class Joypad {
   constructor(keys) {
-    this.key_status = {};
-    this.key_count = 8;
-    this.key_define = keys;
-    this.data = new Array(this.key_count);
+    this.keyStatus = {};
+    this.keyCount = 8;
+    this.keyDefine = keys;
+    this.data = new Array(this.keyCount);
     this.index = 0;
     this.strobe = 0;
 
-    for(var i=0; i<this.key_count; i++)
-      this.key_status[keys[i]] = 0;
+    for(var i=0; i<this.keyCount; i++)
+      this.keyStatus[keys[i]] = 0;
   }
 
   input() {
-    for(var i=0; i<this.key_count; i++)
-      this.data[i] = this.key_status[this.key_define[i]]? 1:0;
+    for(var i=0; i<this.keyCount; i++)
+      this.data[i] = this.keyStatus[this.keyDefine[i]]? 1:0;
   }
 }
 

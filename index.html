@@ -8,22 +8,40 @@
       import { main, } from './main.js';
       var r = document.querySelector('#rom');
       var m = document.querySelector('#main');
+      var c = document.querySelector('#console')
       m.onclick = function() {
         main(r.value);
+        c.focus();
+        c.blur();
       }
     </script>
   </head>
 
   <body id="body">
     <select id="rom" >
+      <!-- NROM -->
       <option value="./rom/mario1.nes">mario1</option>
+      <option value="./rom/xevious.nes">xevious</option>
+      <option value="./rom/spelunker.nes">spelunker</option>
+      <option value="./rom/druaga.nes">druaga</option>
+
+      <!-- CNROM -->
       <option value="./rom/dq1.nes">dq1</option>
+      <option value="./rom/portopia.nes">portopia</option>
+      <option value="./rom/takahashi.nes">takahashi</option>
+
+      <!-- UNROM -->
+      <option value="./rom/rockman.nes">rockman</option>
+      
+      <!-- MMC1 -->
+      <option value="./rom/rockman2.nes">rockman2</option>
+      <option value="./rom/ff1.nes">ff1</option>
       <option value="./rom/dq3.nes">dq3</option>
       <option value="./rom/dq4.nes">dq4</option>
-      <option value="./rom/rockman.nes">rockman</option>
-      <option value="./rom/rockman2.nes">rockman2</option>
+      <option value="./rom/gigazombie.nes">gigazombie</option>
+
     </select>
-    <input type="button" value="submit" id="main">
-    <canvas id="console" width="256" height="240"></canvas>
+    <input type="button" value="play" id="main">
+    <canvas id="console" width="256" height="240" tabindex="0"></canvas>
   </body>
 </html>
