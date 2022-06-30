@@ -1,4 +1,2 @@
-src/hoge
-src/.eslintrc.js
-src/nesmapper.txt
 rom/*
+!.gitkeep
