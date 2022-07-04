@@ -1,5 +1,5 @@
 # JSNES
-JavaScript NES emulator with Canvas.
+Simple NES emulator in JavaScript.
 
 ## Usage
 Place your ROM file and add the file path to index.html.
