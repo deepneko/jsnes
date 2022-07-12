@@ -12,6 +12,18 @@ Start a local web server.
 
 Then, you can play the game via http://localhost:9999.
 
+## Key bindings
+| NES        	| Keyboard  |
+|-----------	|----------	|
+| Up        	| W       	|
+| Down      	| S     	|
+| Left      	| A     	|
+| Right     	| D        	|
+| B Button      | L      	|
+| A Button      | K         |
+| Start    	    | Enter    	|
+| Select     	| Space   	|
+
 ## Games
 Confirmed these games worked well.
 
