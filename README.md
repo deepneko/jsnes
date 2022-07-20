@@ -19,8 +19,8 @@ Then, you can play the game via http://localhost:9999.
 | Down      	| S     	|
 | Left      	| A     	|
 | Right     	| D        	|
-| B Button      | L      	|
-| A Button      | K         |
+| A Button      | L      	|
+| B Button      | K         |
 | Start    	    | Enter    	|
 | Select     	| Space   	|
 
