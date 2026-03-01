@@ -367,7 +367,7 @@ export function dey(cpu, cycle) {
 }
 
 export function rel(cpu, cond) {
-  var addr = util.s8(cpu.read8(this.imm(cpu)));
+  var addr = util.s8(cpu.read8(imm(cpu)));
   if(cond) {
     if(cpu.pc&0xff00 != (cpu.pc+addr)&0xff00)
       cpu.cycles--;
@@ -379,49 +379,49 @@ export function rel(cpu, cond) {
 }
 
 export function bcc(cpu, cycle) {
-  var addr = this.rel(cpu, !cpu.c);
+  var addr = rel(cpu, !cpu.c);
   cpu.pc += addr;
   cpu.cycles -= cycle;
 }
 
 export function bcs(cpu, cycle) {
-  var addr = this.rel(cpu, cpu.c);
+  var addr = rel(cpu, cpu.c);
   cpu.pc += addr;
   cpu.cycles -= cycle;
 }
 
 export function bne(cpu, cycle) {
-  var addr = this.rel(cpu, !cpu.z);
+  var addr = rel(cpu, !cpu.z);
   cpu.pc += addr;
   cpu.cycles -= cycle;
 }
 
 export function beq(cpu, cycle) {
-  var addr = this.rel(cpu, cpu.z);
+  var addr = rel(cpu, cpu.z);
   cpu.pc += addr;
   cpu.cycles -= cycle;
 }
 
 export function bpl(cpu, cycle) {
-  var addr = this.rel(cpu, !cpu.n);
+  var addr = rel(cpu, !cpu.n);
   cpu.pc += addr;
   cpu.cycles -= cycle;
 }
 
 export function bmi(cpu, cycle) {
-  var addr = this.rel(cpu, cpu.n);
+  var addr = rel(cpu, cpu.n);
   cpu.pc += addr;
   cpu.cycles -= cycle;
 }
 
 export function bvc(cpu, cycle) {
-  var addr = this.rel(cpu, !cpu.v);
+  var addr = rel(cpu, !cpu.v);
   cpu.pc += addr;
   cpu.cycles -= cycle;
 }
 
 export function bvs(cpu, cycle) {
-  var addr = this.rel(cpu, cpu.v);
+  var addr = rel(cpu, cpu.v);
   cpu.pc += addr;
   cpu.cycles -= cycle;
 }
@@ -433,8 +433,8 @@ export function brk(cpu, cycle) {
 }
 
 export function jsr(cpu, cycle) {
-  this.push16(cpu, util.u16(cpu.pc + 1));
-  cpu.pc = this.abs(cpu);
+  push16(cpu, util.u16(cpu.pc + 1));
+  cpu.pc = abs(cpu);
   cpu.cycles -= cycle;
 }
 
@@ -444,33 +444,33 @@ export function jmp(cpu, cycle, addr) {
 }
 
 export function rti(cpu, cycle) {
-  this.setStatus(cpu, this.pop8(cpu));
-  cpu.pc = this.pop16(cpu);
+  setStatus(cpu, pop8(cpu));
+  cpu.pc = pop16(cpu);
   cpu.cycles -= cycle;
 }
 
 export function rts(cpu, cycle) {
-  cpu.pc = util.u16(this.pop16(cpu) + 1);
+  cpu.pc = util.u16(pop16(cpu) + 1);
   cpu.cycles -= cycle;
 }
 
 export function php(cpu, cycle) {
-  this.push8(cpu, this.getStatus(cpu));
+  push8(cpu, getStatus(cpu));
   cpu.cycles -= cycle;
 }
 
 export function plp(cpu, cycle) {
-  this.setStatus(cpu, this.pop8(cpu));
+  setStatus(cpu, pop8(cpu));
   cpu.cycles -= cycle;
 }
 
 export function pha(cpu, cycle) {
-  this.push8(cpu, cpu.a);
+  push8(cpu, cpu.a);
   cpu.cycles -= cycle;
 }
 
 export function pla(cpu, cycle) {
-  cpu.a = this.pop8(cpu);
+  cpu.a = pop8(cpu);
   cpu.n = cpu.a >> 7;
   cpu.z = cpu.a == 0;
   cpu.cycles -= cycle;
