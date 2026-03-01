@@ -99,32 +99,32 @@ document.addEventListener('DOMContentLoaded', () => {
         consoleCanvas.focus();
         consoleCanvas.blur();
     }
-
-    // Drag and Drop support
-    const dropZone = document.body;
-
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'copy';
-    });
-
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        
-        if (e.dataTransfer.files.length > 0) {
-            const file = e.dataTransfer.files[0];
-            const reader = new FileReader();
-
-            reader.onload = (event) => {
-                const arrayBuffer = event.target.result;
-                const uint8Array = new Uint8Array(arrayBuffer);
-                main(uint8Array); // Pass the binary data directly
-                consoleCanvas.focus(); // Focus canvas for input
-            };
-
-            reader.readAsArrayBuffer(file);
-        }
-    });
-
-    // Visual feedback for drag and drop could be added here
 });
+
+// Drag and Drop support
+// Handle drag events on the window to prevent default browser behavior
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    window.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    }, false);
+});
+
+window.addEventListener('drop', (e) => {
+    if (e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        const reader = new FileReader();
+
+        reader.onload = (event) => {
+            const arrayBuffer = event.target.result;
+            const uint8Array = new Uint8Array(arrayBuffer);
+            main(uint8Array); // Pass the binary data directly
+            
+            // Focus canvas for input if it exists
+            const consoleCanvas = document.querySelector('#console');
+            if(consoleCanvas) consoleCanvas.focus();
+        };
+
+        reader.readAsArrayBuffer(file);
+    }
+}, false);
