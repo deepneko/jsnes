@@ -90,15 +90,7 @@ async function main(rom) {
 
 
 document.addEventListener('DOMContentLoaded', () => {
-    const romSelect = document.querySelector('#rom');
-    const mainBtn = document.querySelector('#main');
     const consoleCanvas = document.querySelector('#console');
-
-    mainBtn.onclick = function() {
-        main(romSelect.value);
-        consoleCanvas.focus();
-        consoleCanvas.blur();
-    }
 
     const openFolderBtn = document.querySelector('#open-folder');
     const romListDiv = document.querySelector('#rom-list');
