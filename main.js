@@ -106,9 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.nes')) {
                         const btn = document.createElement('button');
                         btn.textContent = entry.name;
-                        btn.style.display = 'block';
-                        btn.style.width = '100%';
-                        btn.style.marginBottom = '5px';
+                        // Styles are now handled in CSS for compactness
                         btn.onclick = async () => {
                             const file = await entry.getFile();
                             const buffer = await file.arrayBuffer();

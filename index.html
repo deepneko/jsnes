@@ -4,21 +4,69 @@
     <meta charset="utf-8">
     <title>jsnes</title>
     <style>
+      body {
+        margin: 20px;
+        font-family: sans-serif;
+      }
+      #container {
+        display: flex;
+        align-items: flex-start;
+        gap: 20px;
+      }
+      #sidebar {
+        width: 250px;
+        display: flex;
+        flex-direction: column;
+        max-height: 520px; /* Aligns roughly with game height + button */
+      }
+      #rom-list {
+        flex-grow: 1;
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        padding: 5px;
+        margin-top: 10px;
+        display: none;
+        background: #f9f9f9;
+        /* Custom scrollbar for webkit */
+        scrollbar-width: thin; 
+      }
+      #rom-list button {
+        width: 100%;
+        text-align: left;
+        padding: 5px;
+        margin-bottom: 2px;
+        font-size: 12px;
+        cursor: pointer;
+        border: 1px solid #ddd;
+        background: white;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      #rom-list button:hover {
+        background: #eee;
+      }
       #console {
         width: 512px;
         height: 480px;
-        image-rendering: pixelated; /* Keeps pixels sharp when scaled */
+        image-rendering: pixelated; 
         border: 1px solid black;
         display: block;
-        margin: 20px 0;
+        background: #000;
       }
     </style>
     <script type="module" src="./main.js"></script>
   </head>
 
   <body id="body">
-    <input type="button" value="Load ROM Folder" id="open-folder">
-    <canvas id="console" width="256" height="240" tabindex="0"></canvas>
-    <div id="rom-list" style="margin-top: 20px; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; display: none;"></div>
+    <div id="container">
+      <div id="sidebar">
+        <input type="button" value="Load ROM Folder" id="open-folder" style="width: 100%; padding: 8px;">
+        <div id="rom-list"></div>
+      </div>
+      <div>
+        <canvas id="console" width="256" height="240" tabindex="0"></canvas>
+      </div>
+    </div>
   </body>
 </html>
