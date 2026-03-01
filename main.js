@@ -99,6 +99,38 @@ document.addEventListener('DOMContentLoaded', () => {
         consoleCanvas.focus();
         consoleCanvas.blur();
     }
+
+    const openFolderBtn = document.querySelector('#open-folder');
+    const romListDiv = document.querySelector('#rom-list');
+
+    if (openFolderBtn) {
+        openFolderBtn.onclick = async () => {
+            try {
+                const dirHandle = await window.showDirectoryPicker();
+                romListDiv.innerHTML = '';
+                romListDiv.style.display = 'block';
+
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.nes')) {
+                        const btn = document.createElement('button');
+                        btn.textContent = entry.name;
+                        btn.style.display = 'block';
+                        btn.style.width = '100%';
+                        btn.style.marginBottom = '5px';
+                        btn.onclick = async () => {
+                            const file = await entry.getFile();
+                            const buffer = await file.arrayBuffer();
+                            main(new Uint8Array(buffer));
+                            consoleCanvas.focus();
+                        };
+                        romListDiv.appendChild(btn);
+                    }
+                }
+            } catch (err) {
+                console.error("Error accessing folder:", err);
+            }
+        };
+    }
 });
 
 // Drag and Drop support: Prevent default browser behavior (opening file)
