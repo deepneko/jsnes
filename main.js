@@ -2,7 +2,7 @@ import { NES, } from './src/nes.js'
 import { Output, } from './src/output.js'
 import * as util from './src/util.js'
 
-export async function main(rom) {
+async function main(rom) {
   var output = new Output();
 
   var nes = new NES(output);
@@ -63,3 +63,15 @@ export async function main(rom) {
   }
 }
 
+
+document.addEventListener('DOMContentLoaded', () => {
+    const romSelect = document.querySelector('#rom');
+    const mainBtn = document.querySelector('#main');
+    const consoleCanvas = document.querySelector('#console');
+
+    mainBtn.onclick = function() {
+        main(romSelect.value);
+        consoleCanvas.focus();
+        consoleCanvas.blur();
+    }
+});
