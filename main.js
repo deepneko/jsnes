@@ -123,40 +123,4 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// Drag and Drop support: Prevent default browser behavior (opening file)
-// We utilize 'window' to catch events anywhere on the page
-['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-    window.addEventListener(eventName, (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-    }, false);
-});
 
-window.addEventListener('dragover', (e) => {
-    e.preventDefault(); // Necessary to allow dropping
-    if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = 'copy';
-    }
-}, false);
-
-window.addEventListener('drop', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        const file = e.dataTransfer.files[0];
-        console.log("File dropped:", file.name); // Debug log
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const arrayBuffer = event.target.result;
-            const uint8Array = new Uint8Array(arrayBuffer);
-            main(uint8Array); 
-            
-            const consoleCanvas = document.querySelector('#console');
-            if(consoleCanvas) consoleCanvas.focus();
-        };
-
-        reader.readAsArrayBuffer(file);
-    }
-}, false);
