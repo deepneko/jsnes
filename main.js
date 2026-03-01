@@ -2,7 +2,38 @@ import { NES, } from './src/nes.js'
 import { Output, } from './src/output.js'
 import * as util from './src/util.js'
 
+let currentNes = null;
+let currentEmulation = null;
+
+// Setup input handlers once
+document.addEventListener('keydown', function(e) {
+  if (!currentNes) return;
+  currentNes.joypad0.keyStatus[e.code] = 1;
+  if(e.code == "KeyQ")
+    currentNes.quit = true;
+  if(e.code == "KeyR") {
+    currentNes.reset();
+  }
+}, false);
+
+document.addEventListener('keyup', function(e) {
+  if (!currentNes) return;
+  currentNes.joypad0.keyStatus[e.code] = 0;
+}, false);
+
 async function main(rom) {
+  // Stop previous emulation if running
+  if (currentEmulation) {
+    clearInterval(currentEmulation);
+    if (currentNes) {
+      // audio context requires user interaction to start, 
+      // but stopping/closing might be good practice if exposed
+      // currentNes.output.soundStop(); // output is not exposed on NES instance directly in original code structure but assigned to it.
+      // Actually output.soundStop() was called on quit.
+      // Let's see... output is created inside main.
+    }
+  }
+
   var output = new Output();
 
   var nes = new NES(output);
@@ -21,18 +52,8 @@ async function main(rom) {
     return;
   }
 
-  document.addEventListener('keydown', function(e) {
-    nes.joypad0.keyStatus[e.code] = 1;
-    if(e.code == "KeyQ")
-      nes.quit = true;
-    if(e.code == "KeyR") {
-      nes.reset();
-    }
-  }, false);
-
-  document.addEventListener('keyup', function(e) {
-    nes.joypad0.keyStatus[e.code] = 0;
-  }, false);
+  // Update global reference
+  currentNes = nes;
 
   nes.debug = false;
   nes.cpu.debug = false;
@@ -41,20 +62,24 @@ async function main(rom) {
 
   console.log("Starting NES emulation");
   try {
-    var emulation = setInterval(async function() {
+    currentEmulation = setInterval(async function() {
       nes.frame();
 
       if(nes.quit) {
         console.log("Finished NES emulation");
         output.soundStop();
 
+        // Only offer download if it was a manual quit? 
+        // Or keep original behavior.
         var blob = new Blob([nes.log], { "type" : "text/plain" });
         var e = document.createElement("a");
         e.download = "jsnes.txt";
         e.href = window.URL.createObjectURL(blob);
         e.click();
 
-        clearInterval(emulation);
+        clearInterval(currentEmulation);
+        currentEmulation = null;
+        currentNes = null;
       }
     }, 1000/60);
   } catch(e) {
@@ -74,4 +99,32 @@ document.addEventListener('DOMContentLoaded', () => {
         consoleCanvas.focus();
         consoleCanvas.blur();
     }
+
+    // Drag and Drop support
+    const dropZone = document.body;
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        
+        if (e.dataTransfer.files.length > 0) {
+            const file = e.dataTransfer.files[0];
+            const reader = new FileReader();
+
+            reader.onload = (event) => {
+                const arrayBuffer = event.target.result;
+                const uint8Array = new Uint8Array(arrayBuffer);
+                main(uint8Array); // Pass the binary data directly
+                consoleCanvas.focus(); // Focus canvas for input
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+    });
+
+    // Visual feedback for drag and drop could be added here
 });
