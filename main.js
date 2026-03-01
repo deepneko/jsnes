@@ -102,15 +102,26 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Drag and Drop support
-// Handle drag events on the window to prevent default browser behavior
-['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-    window.addEventListener(eventName, (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-    }, false);
-});
+document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+}, false);
 
-window.addEventListener('drop', (e) => {
+document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy'; // Explicitly show copy cursor
+}, false);
+
+document.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+}, false);
+
+document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     if (e.dataTransfer.files.length > 0) {
         const file = e.dataTransfer.files[0];
         const reader = new FileReader();
@@ -118,9 +129,8 @@ window.addEventListener('drop', (e) => {
         reader.onload = (event) => {
             const arrayBuffer = event.target.result;
             const uint8Array = new Uint8Array(arrayBuffer);
-            main(uint8Array); // Pass the binary data directly
+            main(uint8Array); 
             
-            // Focus canvas for input if it exists
             const consoleCanvas = document.querySelector('#console');
             if(consoleCanvas) consoleCanvas.focus();
         };
