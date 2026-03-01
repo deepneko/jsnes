@@ -3,56 +3,100 @@
   <head>
     <meta charset="utf-8">
     <title>jsnes</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
       body {
-        margin: 20px;
-        font-family: sans-serif;
+        margin: 0;
+        padding: 20px;
+        font-family: 'Press Start 2P', cursive;
+        background-color: #202020;
+        color: #e0e0e0;
       }
       #container {
         display: flex;
         align-items: flex-start;
         gap: 20px;
+        justify-content: center;
       }
       #sidebar {
-        width: 250px;
+        width: 300px;
         display: flex;
         flex-direction: column;
-        max-height: 520px; /* Aligns roughly with game height + button */
+        max-height: 520px;
+        border: 4px solid #8b0000; /* Famicom Red */
+        background-color: #000;
+        padding: 10px;
+        box-shadow: 5px 5px 0px #000;
+      }
+      #open-folder {
+        width: 100%;
+        padding: 15px;
+        font-family: 'Press Start 2P', cursive;
+        font-size: 10px;
+        background-color: #8b0000; /* Famicom Red */
+        color: #fff; /* Goldish text */
+        border: 2px solid #d4af37; /* Gold */
+        cursor: pointer;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+      #open-folder:hover {
+        background-color: #a00000;
+      }
+      #open-folder:active {
+        transform: translate(2px, 2px);
       }
       #rom-list {
         flex-grow: 1;
         overflow-y: auto;
-        border: 1px solid #ccc;
+        border: 2px solid #8b0000;
         padding: 5px;
-        margin-top: 10px;
         display: none;
-        background: #f9f9f9;
+        background: #000;
         /* Custom scrollbar for webkit */
-        scrollbar-width: thin; 
+        scrollbar-width: thin;
+        scrollbar-color: #8b0000 #000;
+      }
+      #rom-list::-webkit-scrollbar {
+        width: 10px;
+      }
+      #rom-list::-webkit-scrollbar-track {
+        background: #000;
+      }
+      #rom-list::-webkit-scrollbar-thumb {
+        background-color: #8b0000;
+        border: 2px solid #000;
       }
       #rom-list button {
         width: 100%;
         text-align: left;
-        padding: 5px;
-        margin-bottom: 2px;
-        font-size: 12px;
+        padding: 10px;
+        margin-bottom: 5px;
+        font-family: 'Press Start 2P', cursive;
+        font-size: 10px;
         cursor: pointer;
-        border: 1px solid #ddd;
-        background: white;
+        border: 1px solid #404040;
+        background: #202020;
+        color: #ccc;
         text-overflow: ellipsis;
         overflow: hidden;
         white-space: nowrap;
+        text-transform: uppercase;
+        line-height: 1.5;
       }
       #rom-list button:hover {
-        background: #eee;
+        background: #8b0000;
+        color: #fff;
+        border-color: #d4af37;
       }
-      #console {
+      canvas#console {
         width: 512px;
         height: 480px;
         image-rendering: pixelated; 
-        border: 1px solid black;
+        border: 4px solid #404040;
         display: block;
         background: #000;
+        box-shadow: 0 0 20px rgba(0,0,0,0.5);
       }
     </style>
     <script type="module" src="./main.js"></script>
