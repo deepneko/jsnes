@@ -93,7 +93,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const consoleCanvas = document.querySelector('#console');
 
     const openFolderBtn = document.querySelector('#open-folder');
+    const resetBtn = document.querySelector('#reset-btn');
     const romListDiv = document.querySelector('#rom-list');
+
+    if (resetBtn) {
+        resetBtn.onclick = () => {
+             if (currentNes) {
+                 currentNes.reset();
+                 consoleCanvas.focus();
+             }
+        };
+    }
 
     if (openFolderBtn) {
         openFolderBtn.onclick = async () => {
