@@ -25,13 +25,14 @@ async function main(rom) {
   // Stop previous emulation if running
   if (currentEmulation) {
     clearInterval(currentEmulation);
-    if (currentNes) {
-      // audio context requires user interaction to start, 
-      // but stopping/closing might be good practice if exposed
-      // currentNes.output.soundStop(); // output is not exposed on NES instance directly in original code structure but assigned to it.
-      // Actually output.soundStop() was called on quit.
-      // Let's see... output is created inside main.
+    currentEmulation = null;
+  }
+  
+  if (currentNes) {
+    if (currentNes.output) {
+      currentNes.output.soundStop();
     }
+    currentNes = null;
   }
 
   var output = new Output();
