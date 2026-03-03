@@ -2,15 +2,24 @@
 Simple NES emulator in JavaScript.
 
 ## Usage
-Place your ROM file and add the file path to index.html.
+1. Open the application.
+2. Click the **"LOAD ROM FOLDER"** button on the left sidebar.
+3. Select a local folder containing your `.nes` ROM files.
+   (The browser will ask for permission to view the files.)
+4. The list of ROMs will appear in the sidebar. Click on a game to start playing.
+5. To restart the game, click the **"RESET"** button.
 
-    <option value="./rom/mario1.nes">mario1</option>
+## Development
 
-Start a local web server.
+Install dependencies:
 
-    $ ruby webrick.rb 9999
+    $ npm install
 
-Then, you can play the game via http://localhost:9999.
+Start a local development server:
+
+    $ npm run dev
+
+Then open http://localhost:5173 in your browser.
 
 ## Key bindings
 | NES        	| Keyboard  |
