@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Controller Body (Red Square) -->
+  <rect x="1" y="2" width="30" height="28" rx="4" fill="#8B0000" />
+  
+  <!-- Gold Plate (Square area) -->
+  <rect x="3" y="4" width="26" height="24" rx="2" fill="#D4AF37" />
+  
+  <!-- D-Pad (Black Cross, Segments of 4) -->
+  <path d="M4 14 h4 v-4 h4 v4 h4 v4 h-4 v4 h-4 v-4 h-4 z" fill="#222" />
+  
+  <!-- B Button (Black, Shifted Left) -->
+  <circle cx="19.5" cy="17" r="2.5" fill="#222" />
+  
+  <!-- A Button (Black, Shifted Left) -->
+  <circle cx="25.5" cy="17" r="2.5" fill="#222" />
+</svg>
