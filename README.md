@@ -1,6 +1,8 @@
 # JSNES
 Simple NES emulator in JavaScript.
 
+Live Demo: https://jsnes.kokonani.com/
+
 ## Usage
 1. Open the application.
 2. Click the **"LOAD ROM FOLDER"** button on the left sidebar.
