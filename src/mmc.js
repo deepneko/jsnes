@@ -66,9 +66,11 @@ export class MMC {
       break;
 
     case addr < 0x8000: // SRAM: 0x6000 - 0x7FFF
-      if(this.sramEnable)
+      if(this.sramEnable) {
         this.sram[addr&0x1fff] = data;
-      else
+        if(this.nes.onBatteryRamWrite)
+          this.nes.onBatteryRamWrite();
+      } else
         this.nes.mapper.write(addr, data);
       break;
 

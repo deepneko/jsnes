@@ -12,6 +12,7 @@ export class Rom {
     this.trainerPresent = false;
     this.fourScreen = false;
     this.mapperNum = 0;
+    this.romId = null;
 
     console.log("constructor Rom", this);
   }
@@ -25,6 +26,18 @@ export class Rom {
 
   str2buf(str) {
     return [].map.call(str, (c) => c.charCodeAt(0) & 0xff);
+  }
+
+  buildRomId(buf) {
+    // FNV-1a 32-bit hash for stable ROM identity in browser storage.
+    var hash = 0x811c9dc5;
+    for (var i = 0; i < buf.length; i++) {
+      hash ^= buf[i];
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+
+    var hex = hash.toString(16).padStart(8, '0');
+    return 'ines-' + this.mapperNum + '-' + this.prgRomPageCnt + '-' + this.chrRomPageCnt + '-' + hex;
   }
 
   load(file) {
@@ -84,8 +97,9 @@ export class Rom {
     else
       this.chrRom = new Array(0x2000);
 
-    this.sram = new Array(0x2000);
-    this.vram = new Array(0x2000);
+    this.sram = new Array(0x2000).fill(0xFF);
+    this.vram = new Array(0x2000).fill(0);
+    this.romId = this.buildRomId(buf);
     return true;
   }
 }

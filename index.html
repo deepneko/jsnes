@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8">
     <title>jsnes</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
       body {
@@ -17,6 +18,12 @@
         align-items: center;
         justify-content: center;
         overflow: hidden;
+      }
+
+      #layout {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
       }
       
       /* Top and Bottom Red Bands (like the console sides/front) */
@@ -60,6 +67,35 @@
         background: #f0f0f0;
         padding: 0 10px;
         font-weight: bold;
+      }
+
+      #side-help {
+        border: 4px solid #4f545a;
+        background: #ffffff;
+        box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2);
+        font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+      }
+
+      #side-help table {
+        border-collapse: collapse;
+        min-width: 220px;
+      }
+
+      #side-help th,
+      #side-help td {
+        border: 1px solid #aeb4bc;
+        padding: 6px 10px;
+        font-size: 12px;
+        color: #0b0d12;
+      }
+
+      #side-help th {
+        font-weight: 700;
+        background: #f3f4f6;
+      }
+
+      #side-help tbody tr:nth-child(even) td {
+        background: #fafafa;
       }
 
       #sidebar {
@@ -118,6 +154,70 @@
         box-shadow: none;
       }
 
+      .sub-controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .sub-controls button,
+      .sub-controls select {
+        padding: 8px;
+        font-family: 'Press Start 2P', cursive;
+        font-size: 8px;
+        border: 2px solid #d4af37;
+        background: #111;
+        color: #e9e9e9;
+        cursor: pointer;
+      }
+
+      .sub-controls button:hover,
+      .sub-controls select:hover {
+        background: #8b0000;
+      }
+
+      #save-status {
+        min-height: 28px;
+        font-size: 9px;
+        color: #f3da8a;
+        margin-bottom: 12px;
+        line-height: 1.4;
+      }
+
+      #battery-save-list {
+        border: 2px solid #404040;
+        background: #111;
+        color: #ddd;
+        min-height: 78px;
+        max-height: 120px;
+        overflow-y: auto;
+        padding: 6px;
+        margin-bottom: 12px;
+        font-size: 8px;
+        line-height: 1.5;
+      }
+
+      .battery-save-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 4px 2px;
+        border-bottom: 1px solid #2a2a2a;
+      }
+
+      .battery-save-item:last-child {
+        border-bottom: none;
+      }
+
+      .battery-save-item.active {
+        color: #f3da8a;
+      }
+
+      .battery-save-empty {
+        color: #888;
+      }
+
       #rom-list {
         flex-grow: 1;
         overflow-y: auto;
@@ -166,15 +266,52 @@
   </head>
 
   <body id="body">
-    <div id="container">
-      <div id="sidebar">
+    <div id="layout">
+      <div id="container">
+        <div id="sidebar">
 
         <input type="button" value="Load ROM Folder" id="open-folder">
         <input type="button" value="RESET" id="reset-btn">
+        <div class="sub-controls">
+          <select id="battery-slot" title="Battery save slot">
+            <option value="0">SLOT 0</option>
+            <option value="1">SLOT 1</option>
+            <option value="2">SLOT 2</option>
+            <option value="3">SLOT 3</option>
+            <option value="4">SLOT 4</option>
+            <option value="5">SLOT 5</option>
+            <option value="6">SLOT 6</option>
+            <option value="7">SLOT 7</option>
+            <option value="8">SLOT 8</option>
+            <option value="9">SLOT 9</option>
+          </select>
+          <button id="save-battery-btn" type="button">Q-SAVE</button>
+          <button id="load-battery-btn" type="button">Q-LOAD</button>
+          <button id="export-battery-btn" type="button">BATT EXPORT</button>
+          <button id="import-battery-btn" type="button">BATT IMPORT</button>
+        </div>
+        <div id="save-status"></div>
+        <div id="battery-save-list"></div>
+        <input id="import-battery-input" type="file" accept=".sav,application/octet-stream" style="display:none">
         <div id="rom-list"></div>
+        </div>
+        <div>
+          <canvas id="console" width="256" height="240" tabindex="0"></canvas>
+        </div>
       </div>
-      <div>
-        <canvas id="console" width="256" height="240" tabindex="0"></canvas>
+      <div id="side-help">
+        <table aria-label="Keyboard controls">
+          <thead>
+            <tr><th>NES</th><th>Keyboard</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Move</td><td>Arrow Keys</td></tr>
+            <tr><td>A Button</td><td>Z</td></tr>
+            <tr><td>B Button</td><td>X</td></tr>
+            <tr><td>Start</td><td>Enter</td></tr>
+            <tr><td>Select</td><td>Space</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </body>

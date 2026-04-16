@@ -17,8 +17,8 @@ export class NES {
     this.mapper = null;
     this.scanlineCycles = Math.round(1.789773 / 262 / 60 * 1000000);
     this.joypad0 = new Joypad(
-        ['KeyL', 'KeyK', 'Space', 'Enter', 
-         'KeyW', 'KeyS', 'KeyA', 'KeyD']
+      ['KeyZ', 'KeyX', 'Space', 'Enter', 
+       'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
          );
     this.joypad1 = new Joypad(
         ['Comma', 'Period', 'ShiftLeft', 'ShiftRight',
@@ -35,6 +35,7 @@ export class NES {
     this.log = "";
     this.debug = false; 
     this.quit = false;
+    this.onBatteryRamWrite = null;
 
     console.log("constructor NES", this);
   }
